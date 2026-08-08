@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     const imagesWithoutAlt = imgMatches.filter(
       (img) => !/alt=["'][^"']+["']/i.test(img[0])
     ).length;
-    const hasHttps = url.startsWith("https://");
+    const hasHttps = response.url.startsWith("https://");
 
     const extractedData = {
       title: titleMatch ? titleMatch[1].trim() : "No title found",
@@ -47,8 +47,31 @@ export async function POST(request: NextRequest) {
       hasHttps,
     };
 
-    // Step 3: Send this data to Gemini for the actual roast report
-    const prompt = `You are a brutally honest but helpful website reviewer. Analyze this website data and return a JSON report.
+    // Step 3: Get a screenshot via Microlink (free, no API key needed)
+    let screenshotBase64 = null;
+    try {
+      const microlinkUrl = `https://api.microlink.io/?url=${encodeURIComponent(
+        url
+      )}&screenshot=true&meta=false&embed=screenshot.url`;
+      const screenshotRes = await fetch(
+        `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false&waitFor=6000&fullPage=true`
+      );
+      const screenshotData = await screenshotRes.json();
+      const screenshotImageUrl = screenshotData?.data?.screenshot?.url;
+
+      if (screenshotImageUrl) {
+        const imageRes = await fetch(screenshotImageUrl);
+        const imageBuffer = await imageRes.arrayBuffer();
+        screenshotBase64 = Buffer.from(imageBuffer).toString("base64");
+      }
+    } catch (screenshotError) {
+      console.error("Screenshot failed, continuing without it:", screenshotError);
+    }
+
+    // Step 4: Build the Gemini prompt (with image if we have one)
+    const promptText = `You are a brutally honest but helpful website reviewer. Analyze this website${
+      screenshotBase64 ? " (both the data below AND the attached screenshot image)" : ""
+    } and return a JSON report.
 
 Website data:
 - Title: ${extractedData.title}
@@ -73,13 +96,23 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
   "suggestions": ["<specific actionable suggestion>"]
 }`;
 
+    const parts: any[] = [{ text: promptText }];
+    if (screenshotBase64) {
+      parts.push({
+        inline_data: {
+          mime_type: "image/png",
+          data: screenshotBase64,
+        },
+      });
+    }
+
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
+          contents: [{ parts }],
         }),
       }
     );
@@ -95,8 +128,6 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
     }
 
     let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-    // Clean up in case Gemini wraps it in markdown code blocks
     aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
 
     const report = JSON.parse(aiText);
