@@ -120,7 +120,12 @@ Website data:
 - Total Images: ${extractedData.totalImages}
 - Images Missing Alt Text: ${extractedData.imagesWithoutAlt}
 - Uses HTTPS: ${extractedData.hasHttps}
-
+CRITICAL ACCURACY RULES — follow these strictly:
+- Only state facts that are directly present in the website data above or clearly visible in the screenshot. Do NOT guess, assume, or invent specific details (e.g. locations, company names, exact wording, industries) that are not explicitly shown.
+- If the data or screenshot doesn't give you enough to make a specific factual claim, speak in general terms instead of inventing specifics. For example, prefer "the meta description could be more detailed" over inventing what it should say.
+- Numeric/count-based observations (image counts, missing alt text, heading structure) can be stated confidently since they come directly from the data.
+- Descriptive or interpretive claims (what the site is about, who it's for, what a specific piece of text says) must be grounded only in what's actually in the Title, Meta Description, H1 Headings, or clearly readable in the screenshot — never fill in gaps with plausible-sounding guesses.
+- If the screenshot appears broken, blank, or still loading, mention that as a possible issue rather than describing content that may not be reliable.
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
   "overallScore": <number 0-100>,
