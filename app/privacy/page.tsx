@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — ZYNTLOX",
@@ -8,6 +9,12 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen px-4 py-16 flex flex-col items-center">
       <div className="w-full max-w-2xl">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 mb-8 font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase hover:text-[var(--amber)] transition"
+        >
+          ← Back to ZYNTLOX
+        </Link>
         <h1 className="font-display text-4xl font-bold mb-2">Privacy Policy</h1>
         <p className="text-[var(--muted)] mb-10">Last updated: August 22, 2026</p>
 
