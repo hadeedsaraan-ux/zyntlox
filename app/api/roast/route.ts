@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     const html = await response.text();
 
     // Step 2: Extract basic data
-    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
     const metaDescMatch = html.match(
   /<meta\s+name=["']description["']\s+content="([^"]*)"/i
 ) || html.match(
