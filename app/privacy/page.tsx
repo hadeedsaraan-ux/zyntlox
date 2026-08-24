@@ -27,18 +27,24 @@ export default function PrivacyPage() {
             <ul className="space-y-2 text-[var(--text)] opacity-90 leading-relaxed">
               <li className="flex gap-2">
                 <span className="text-[var(--amber)] font-mono">→</span>
-                The URL you submit, and the public HTML of that page, are sent to{" "}
-                <strong>Google Gemini</strong> for analysis.
+                <span>
+                  The URL you submit, and the public HTML of that page, are sent to{" "}
+                  <strong>Google Gemini</strong> for analysis.
+                </span>
               </li>
               <li className="flex gap-2">
                 <span className="text-[var(--amber)] font-mono">→</span>
-                A screenshot of the submitted page is generated via{" "}
-                <strong>Microlink</strong> and also sent to Google Gemini as part of the analysis.
+                <span>
+                  A screenshot of the submitted page is generated via{" "}
+                  <strong>Microlink</strong> and also sent to Google Gemini as part of the analysis.
+                </span>
               </li>
               <li className="flex gap-2">
                 <span className="text-[var(--amber)] font-mono">→</span>
-                We use <strong>Vercel Analytics</strong> to understand aggregate site traffic
-                (e.g. page views). It does not use cookies for cross-site tracking.
+                <span>
+                  We use <strong>Vercel Analytics</strong> to understand aggregate site traffic
+                  (e.g. page views). It does not use cookies for cross-site tracking.
+                </span>
               </li>
             </ul>
           </section>
