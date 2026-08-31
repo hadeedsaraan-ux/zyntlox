@@ -1,12 +1,60 @@
-import { Report } from "../lib/types";
+import { Report, ReportMode } from "../lib/types";
+
+const LABELS: Record<
+  ReportMode,
+  {
+    firstImpression: string;
+    design: string;
+    trust: string;
+    ux: string;
+    seo: string;
+    biggestProblems: string;
+    quickWins: string;
+    suggestions: string;
+  }
+> = {
+  technical: {
+    firstImpression: "First Impression",
+    design: "Design",
+    trust: "Trust",
+    ux: "UX",
+    seo: "SEO",
+    biggestProblems: "Biggest Problems",
+    quickWins: "Quick Wins",
+    suggestions: "AI Suggestions",
+  },
+  plain: {
+    firstImpression: "What Visitors See",
+    design: "Looks",
+    trust: "Trustworthiness",
+    ux: "Ease of Use",
+    seo: "Found on Google?",
+    biggestProblems: "What's Hurting You",
+    quickWins: "Easy Fixes",
+    suggestions: "What To Do Next",
+  },
+};
+
+const IMPACT_LABELS: Record<ReportMode, Record<Report["biggestProblems"][number]["impact"], string>> = {
+  technical: { High: "High", Medium: "Medium", Low: "Low" },
+  plain: { High: "Big Deal", Medium: "Worth Fixing", Low: "Minor" },
+};
+
+const EFFORT_LABELS: Record<ReportMode, Record<Report["biggestProblems"][number]["effort"], string>> = {
+  technical: { Easy: "Easy", Medium: "Medium", Hard: "Hard" },
+  plain: { Easy: "Quick Fix", Medium: "Some Work", Hard: "Bigger Project" },
+};
 
 export default function RoastReport({
   report,
+  mode = "technical",
   sample = false,
 }: {
   report: Report;
+  mode?: ReportMode;
   sample?: boolean;
 }) {
+  const labels = LABELS[mode];
   const score = report.overallScore ?? 0;
   const gaugeAngle = (score / 100) * 180;
   const gaugeColor =
@@ -47,20 +95,20 @@ export default function RoastReport({
       {/* First Impression */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--amber)] mb-2">
-          👀 First Impression
+          👀 {labels.firstImpression}
         </h3>
         <p className="text-[var(--text)] opacity-90 leading-relaxed">
-          {report.firstImpression}
+          {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
         </p>
       </div>
 
       {/* Sub Scores */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Design", value: report.designScore },
-          { label: "Trust", value: report.trustScore },
-          { label: "UX", value: report.uxScore },
-          { label: "SEO", value: report.seoScore },
+          { label: labels.design, value: report.designScore },
+          { label: labels.trust, value: report.trustScore },
+          { label: labels.ux, value: report.uxScore },
+          { label: labels.seo, value: report.seoScore },
         ].map((s) => (
           <div
             key={s.label}
@@ -80,14 +128,16 @@ export default function RoastReport({
       {/* Biggest Problems */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--danger)] mb-4">
-          ❌ Biggest Problems
+          ❌ {labels.biggestProblems}
         </h3>
         <div className="space-y-4">
           {report.biggestProblems?.map((p, i) => (
             <div key={i} className="dotted-divider pt-4 first:pt-0 first:border-0">
-              <p className="text-[var(--text)] opacity-90 mb-1">{p.issue}</p>
+              <p className="text-[var(--text)] opacity-90 mb-1">
+                {mode === "plain" ? p.plainIssue : p.issue}
+              </p>
               <p className="font-mono text-[11px] text-[var(--muted)] uppercase tracking-wide">
-                Impact: {p.impact} · Effort: {p.effort}
+                Impact: {IMPACT_LABELS[mode][p.impact]} · Effort: {EFFORT_LABELS[mode][p.effort]}
               </p>
             </div>
           ))}
@@ -97,10 +147,10 @@ export default function RoastReport({
       {/* Quick Wins */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--success)] mb-4">
-          ✅ Quick Wins
+          ✅ {labels.quickWins}
         </h3>
         <ul className="space-y-2">
-          {report.quickWins?.map((q, i) => (
+          {(mode === "plain" ? report.plainQuickWins : report.quickWins)?.map((q, i) => (
             <li key={i} className="text-[var(--text)] opacity-90 flex gap-2">
               <span className="text-[var(--success)] font-mono">→</span> {q}
             </li>
@@ -111,10 +161,10 @@ export default function RoastReport({
       {/* Suggestions */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--amber)] mb-4">
-          💡 AI Suggestions
+          💡 {labels.suggestions}
         </h3>
         <ul className="space-y-2">
-          {report.suggestions?.map((s, i) => (
+          {(mode === "plain" ? report.plainSuggestions : report.suggestions)?.map((s, i) => (
             <li key={i} className="text-[var(--text)] opacity-90 flex gap-2">
               <span className="text-[var(--amber)] font-mono">→</span> {s}
             </li>

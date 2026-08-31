@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import RoastReport from "./components/RoastReport";
+import ModeToggle from "./components/ModeToggle";
 import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
-import { Report } from "./lib/types";
+import { Report, ReportMode } from "./lib/types";
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<ReportMode>("technical");
 
   const handleRoast = async () => {
     if (!url) {
@@ -95,8 +97,11 @@ export default function Home() {
 
       {report ? (
         <div className="mt-8 w-full max-w-2xl">
-          <h2 className="font-display text-2xl font-bold mb-5">Your Report</h2>
-          <RoastReport report={report} />
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <h2 className="font-display text-2xl font-bold">Your Report</h2>
+            <ModeToggle mode={mode} onChange={setMode} />
+          </div>
+          <RoastReport report={report} mode={mode} />
         </div>
       ) : (
         <>

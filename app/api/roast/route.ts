@@ -121,19 +121,24 @@ Website data:
 - Images Missing Alt Text: ${extractedData.imagesWithoutAlt}
 - Uses HTTPS: ${extractedData.hasHttps}
 
+For every text field below, provide TWO versions: a "technical" version (fine to use terms like UX, SEO, CTA, alt text) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, same problems, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
+
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
   "overallScore": <number 0-100>,
-  "firstImpression": "<2-3 sentences on what a visitor feels in the first 5 seconds>",
+  "firstImpression": "<technical: 2-3 sentences on what a visitor feels in the first 5 seconds>",
+  "plainFirstImpression": "<same idea, plain English, no jargon>",
   "designScore": <number 0-10>,
   "trustScore": <number 0-10>,
   "uxScore": <number 0-10>,
   "seoScore": <number 0-10>,
   "biggestProblems": [
-    {"issue": "<problem>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
+    {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
   ],
-  "quickWins": ["<fixable in 10-30 min>"],
-  "suggestions": ["<specific actionable suggestion>"]
+  "quickWins": ["<technical, fixable in 10-30 min>"],
+  "plainQuickWins": ["<same items, same order, plain English>"],
+  "suggestions": ["<specific actionable technical suggestion>"],
+  "plainSuggestions": ["<same items, same order, plain English>"]
 }`;
 
     const parts: any[] = [{ text: promptText }];

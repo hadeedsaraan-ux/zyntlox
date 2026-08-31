@@ -1,7 +1,14 @@
+"use client";
+
+import { useState } from "react";
 import RoastReport from "./RoastReport";
+import ModeToggle from "./ModeToggle";
 import { sampleReport, sampleUrl } from "../lib/sample-report";
+import { ReportMode } from "../lib/types";
 
 export default function SampleReportPreview() {
+  const [mode, setMode] = useState<ReportMode>("technical");
+
   return (
     <section className="w-full max-w-2xl mt-12">
       <div className="text-center mb-6">
@@ -16,7 +23,10 @@ export default function SampleReportPreview() {
           <span className="font-mono">{sampleUrl}</span>.
         </p>
       </div>
-      <RoastReport report={sampleReport} sample />
+      <div className="flex justify-center mb-4">
+        <ModeToggle mode={mode} onChange={setMode} />
+      </div>
+      <RoastReport report={sampleReport} mode={mode} sample />
     </section>
   );
 }
