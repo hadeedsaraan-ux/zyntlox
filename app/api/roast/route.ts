@@ -122,25 +122,25 @@ Website data:
 - Total Images: ${extractedData.totalImages}
 - Images Missing Alt Text: ${extractedData.imagesWithoutAlt}
 - Uses HTTPS: ${extractedData.hasHttps}
-CRITICAL ACCURACY RULES — follow these strictly:
-- Only state facts that are directly present in the website data above or clearly visible in the screenshot. Do NOT guess, assume, or invent specific details (e.g. locations, company names, exact wording, industries) that are not explicitly shown.
-- If the data or screenshot doesn't give you enough to make a specific factual claim, speak in general terms instead of inventing specifics. For example, prefer "the meta description could be more detailed" over inventing what it should say.
-- Numeric/count-based observations (image counts, missing alt text, heading structure) can be stated confidently since they come directly from the data.
-- Descriptive or interpretive claims (what the site is about, who it's for, what a specific piece of text says) must be grounded only in what's actually in the Title, Meta Description, H1 Headings, or clearly readable in the screenshot — never fill in gaps with plausible-sounding guesses.
-- If the screenshot appears broken, blank, or still loading, mention that as a possible issue rather than describing content that may not be reliable.
+
+For every text field below, provide TWO versions: a "technical" version (fine to use terms like UX, SEO, CTA, alt text) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, same problems, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
+
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
   "overallScore": <number 0-100>,
-  "firstImpression": "<2-3 sentences on what a visitor feels in the first 5 seconds>",
+  "firstImpression": "<technical: 2-3 sentences on what a visitor feels in the first 5 seconds>",
+  "plainFirstImpression": "<same idea, plain English, no jargon>",
   "designScore": <number 0-10>,
   "trustScore": <number 0-10>,
   "uxScore": <number 0-10>,
   "seoScore": <number 0-10>,
   "biggestProblems": [
-    {"issue": "<problem>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
+    {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
   ],
-  "quickWins": ["<fixable in 10-30 min>"],
-  "suggestions": ["<specific actionable suggestion>"]
+  "quickWins": ["<technical, fixable in 10-30 min>"],
+  "plainQuickWins": ["<same items, same order, plain English>"],
+  "suggestions": ["<specific actionable technical suggestion>"],
+  "plainSuggestions": ["<same items, same order, plain English>"]
 }`;
 
     const parts: any[] = [{ text: promptText }];
