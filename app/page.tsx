@@ -3,6 +3,7 @@
 import { useState } from "react";
 import RoastReport from "./components/RoastReport";
 import ModeToggle from "./components/ModeToggle";
+import ExportPdfButton from "./components/ExportPdfButton";
 import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
 import { Report, ReportMode } from "./lib/types";
@@ -104,7 +105,10 @@ export default function Home() {
         <div className="mt-8 w-full max-w-2xl">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <h2 className="font-display text-2xl font-bold">Your Report</h2>
-            <ModeToggle mode={mode} onChange={setMode} />
+            <div className="flex items-center gap-2">
+              <ModeToggle mode={mode} onChange={setMode} />
+              <ExportPdfButton report={report} mode={mode} url={url} />
+            </div>
           </div>
           <RoastReport report={report} mode={mode} />
         </div>
