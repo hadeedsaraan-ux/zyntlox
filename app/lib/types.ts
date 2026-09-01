@@ -21,3 +21,36 @@ export interface Report {
   suggestions: string[];
   plainSuggestions: string[];
 }
+
+export type ComparisonWinner = "yours" | "competitor" | "tie";
+
+export interface SiteSummary {
+  url: string;
+  overallScore: number;
+  firstImpression: string;
+  plainFirstImpression: string;
+  strengths: string[];
+  plainStrengths: string[];
+  weaknesses: string[];
+  plainWeaknesses: string[];
+}
+
+export interface ComparisonCategory {
+  category: "Design" | "Trust" | "UX" | "SEO";
+  yourScore: number;
+  competitorScore: number;
+  winner: ComparisonWinner;
+  verdict: string;
+  plainVerdict: string;
+}
+
+export interface ComparisonReport {
+  yours: SiteSummary;
+  competitor: SiteSummary;
+  categories: ComparisonCategory[];
+  overallWinner: ComparisonWinner;
+  overallVerdict: string;
+  plainOverallVerdict: string;
+  topRecommendations: string[];
+  plainTopRecommendations: string[];
+}
