@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import RoastReport from "./components/RoastReport";
 import ModeToggle from "./components/ModeToggle";
 import ExportPdfButton from "./components/ExportPdfButton";
@@ -52,7 +53,14 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen px-4 py-16 flex flex-col items-center">
+    <main className="relative min-h-screen px-4 py-16 flex flex-col items-center">
+      <Link
+        href="/compare"
+        className="absolute top-4 right-4 sm:top-6 sm:right-6 px-4 py-2 border border-[var(--border)] rounded-full font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase hover:text-[var(--amber)] hover:border-[var(--amber)] transition"
+      >
+        Comparison Mode
+      </Link>
+
       {/* Hero */}
       <div className="w-full max-w-xl text-center mb-10">
         <div className="inline-block px-3 py-1 mb-4 border border-[var(--border)] rounded-full">
