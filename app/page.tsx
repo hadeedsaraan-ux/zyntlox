@@ -22,6 +22,11 @@ export default function Home() {
       return;
     }
 
+        // Auto-add https:// if the user didn't type a protocol
+    let normalizedUrl = url.trim();
+    if (!/^https?:\/\//i.test(normalizedUrl)) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
     setLoading(true);
     setReport(null);
     setError("");
@@ -30,7 +35,7 @@ export default function Home() {
       const res = await fetch("/api/roast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+                body: JSON.stringify({ url: normalizedUrl }),
       });
 
       const data = await res.json();

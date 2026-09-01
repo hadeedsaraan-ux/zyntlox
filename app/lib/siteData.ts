@@ -31,9 +31,11 @@ export async function fetchSiteData(url: string): Promise<SiteDataResult> {
   const html = await response.text();
 
   // Step 2: Extract basic data
-  const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+  const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
   const metaDescMatch = html.match(
-    /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i
+    /<meta\s+name=["']description["']\s+content="([^"]*)"/i
+  ) || html.match(
+    /<meta\s+name=["']description["']\s+content='([^']*)'/i
   );
   const h1Matches = [...html.matchAll(/<h1[^>]*>(.*?)<\/h1>/gi)].map((m) =>
     m[1].replace(/<[^>]+>/g, "").trim()
