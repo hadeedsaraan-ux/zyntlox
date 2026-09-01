@@ -18,15 +18,21 @@ export async function POST(request: NextRequest) {
       fetchSiteData(competitorUrl),
     ]);
 
+    if (!yourSite.ok && !competitorSite.ok) {
+      return NextResponse.json(
+        { error: "Could not fetch either website. Please check both URLs." },
+        { status: 400 }
+      );
+    }
     if (!yourSite.ok) {
       return NextResponse.json(
-        { error: `Could not fetch your website. ${yourSite.error}` },
+        { error: "Could not fetch your website. Please check the URL." },
         { status: 400 }
       );
     }
     if (!competitorSite.ok) {
       return NextResponse.json(
-        { error: `Could not fetch the competitor's website. ${competitorSite.error}` },
+        { error: "Could not fetch the competitor's website. Please check the URL." },
         { status: 400 }
       );
     }

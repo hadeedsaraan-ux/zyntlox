@@ -20,6 +20,12 @@ export default function ComparePageClient() {
       return;
     }
 
+    // Auto-add https:// if the user didn't type a protocol
+    const normalize = (u: string) => {
+      const trimmed = u.trim();
+      return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    };
+
     setLoading(true);
     setComparison(null);
     setError("");
@@ -28,7 +34,10 @@ export default function ComparePageClient() {
       const res = await fetch("/api/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ yourUrl, competitorUrl }),
+        body: JSON.stringify({
+          yourUrl: normalize(yourUrl),
+          competitorUrl: normalize(competitorUrl),
+        }),
       });
 
       const data = await res.json();
