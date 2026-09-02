@@ -12,7 +12,7 @@ export async function callGeminiWithRetry(
   for (const model of MODELS) {
     // Try each model up to 2 times (in case of a temporary overload)
     for (let attempt = 1; attempt <= 2; attempt++) {
-      onStage?.({ id: "gemini", label: `Analyzing with Gemini (${model})` });
+      onStage?.({ id: "gemini", label: "Analyzing with Gemini…" });
       try {
         const geminiResponse = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
