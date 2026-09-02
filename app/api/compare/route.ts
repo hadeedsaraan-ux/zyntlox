@@ -1,43 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callGeminiWithRetry } from "../../lib/gemini";
 import { fetchSiteData } from "../../lib/siteData";
+import { createProgressStream } from "../../lib/progress";
+import { ComparisonReport } from "../../lib/types";
 
 export async function POST(request: NextRequest) {
-  try {
-    const { yourUrl, competitorUrl } = await request.json();
+  const { yourUrl, competitorUrl } = await request.json();
 
-    if (!yourUrl || !competitorUrl) {
-      return NextResponse.json(
-        { error: "Both URLs are required" },
-        { status: 400 }
-      );
-    }
+  if (!yourUrl || !competitorUrl) {
+    return NextResponse.json({ error: "Both URLs are required" }, { status: 400 });
+  }
 
-    const [yourSite, competitorSite] = await Promise.all([
-      fetchSiteData(yourUrl),
-      fetchSiteData(competitorUrl),
-    ]);
+  const { stream, sendStage, sendResult, sendError } = createProgressStream<{
+    comparison: ComparisonReport;
+  }>();
 
-    if (!yourSite.ok && !competitorSite.ok) {
-      return NextResponse.json(
-        { error: "Could not fetch either website. Please check both URLs." },
-        { status: 400 }
-      );
-    }
-    if (!yourSite.ok) {
-      return NextResponse.json(
-        { error: "Could not fetch your website. Please check the URL." },
-        { status: 400 }
-      );
-    }
-    if (!competitorSite.ok) {
-      return NextResponse.json(
-        { error: "Could not fetch the competitor's website. Please check the URL." },
-        { status: 400 }
-      );
-    }
+  (async () => {
+    try {
+      const [yourSite, competitorSite] = await Promise.all([
+        fetchSiteData(yourUrl, sendStage, "Your site"),
+        fetchSiteData(competitorUrl, sendStage, "Competitor site"),
+      ]);
 
-    const promptText = `You are a brutally honest but helpful website reviewer. Compare these two websites head-to-head and return a JSON comparison report.
+      if (!yourSite.ok && !competitorSite.ok) {
+        sendError("Could not fetch either website. Please check both URLs.");
+        return;
+      }
+      if (!yourSite.ok) {
+        sendError("Could not fetch your website. Please check the URL.");
+        return;
+      }
+      if (!competitorSite.ok) {
+        sendError("Could not fetch the competitor's website. Please check the URL.");
+        return;
+      }
+
+      const promptText = `You are a brutally honest but helpful website reviewer. Compare these two websites head-to-head and return a JSON comparison report.
 
 Site A — "Your Site" (${yourUrl}):
 - Title: ${yourSite.extractedData.title}
@@ -100,40 +98,44 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
   "plainTopRecommendations": ["<same items, same order, plain English>"]
 }`;
 
-    const parts: any[] = [{ text: promptText }];
-    if (yourSite.screenshotBase64) {
-      parts.push({
-        inline_data: { mime_type: "image/png", data: yourSite.screenshotBase64 },
-      });
+      const parts: any[] = [{ text: promptText }];
+      if (yourSite.screenshotBase64) {
+        parts.push({
+          inline_data: { mime_type: "image/png", data: yourSite.screenshotBase64 },
+        });
+      }
+      if (competitorSite.screenshotBase64) {
+        parts.push({
+          inline_data: { mime_type: "image/png", data: competitorSite.screenshotBase64 },
+        });
+      }
+
+      sendStage({ id: "gemini", label: "Analyzing both sites with Gemini AI" });
+      let geminiData;
+      try {
+        geminiData = await callGeminiWithRetry(parts, sendStage);
+      } catch (err) {
+        console.error("Gemini failed after all retries/fallbacks:", err);
+        sendError("AI comparison failed. Please try again in a moment.");
+        return;
+      }
+
+      let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+
+      const comparison = JSON.parse(aiText);
+
+      sendResult({ comparison });
+    } catch (error) {
+      console.error(error);
+      sendError("Something went wrong while comparing the websites.");
     }
-    if (competitorSite.screenshotBase64) {
-      parts.push({
-        inline_data: { mime_type: "image/png", data: competitorSite.screenshotBase64 },
-      });
-    }
+  })();
 
-    let geminiData;
-    try {
-      geminiData = await callGeminiWithRetry(parts);
-    } catch (err) {
-      console.error("Gemini failed after all retries/fallbacks:", err);
-      return NextResponse.json(
-        { error: "AI comparison failed. Please try again in a moment." },
-        { status: 500 }
-      );
-    }
-
-    let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-    aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-
-    const comparison = JSON.parse(aiText);
-
-    return NextResponse.json({ success: true, comparison });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json(
-      { error: "Something went wrong while comparing the websites." },
-      { status: 500 }
-    );
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-store",
+    },
+  });
 }

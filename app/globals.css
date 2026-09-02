@@ -41,3 +41,24 @@ body {
 .dotted-divider {
   border-top: 1px dashed var(--border);
 }
+
+@keyframes stage-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+
+.stage-fade {
+  animation: stage-fade 2.4s ease-in-out forwards;
+}

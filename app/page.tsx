@@ -7,7 +7,9 @@ import ModeToggle from "./components/ModeToggle";
 import ExportPdfButton from "./components/ExportPdfButton";
 import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
-import { Report, ReportMode } from "./lib/types";
+import ProgressIndicator from "./components/ProgressIndicator";
+import { Report, ReportMode, ProgressStage, StreamEvent } from "./lib/types";
+import { ExtractedSiteData } from "./lib/siteData";
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -15,6 +17,7 @@ export default function Home() {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<ReportMode>("technical");
+  const [activeStage, setActiveStage] = useState<ProgressStage | null>(null);
 
   const handleRoast = async () => {
     if (!url) {
@@ -30,6 +33,7 @@ export default function Home() {
     setLoading(true);
     setReport(null);
     setError("");
+    setActiveStage(null);
 
     try {
       const res = await fetch("/api/roast", {
@@ -38,17 +42,43 @@ export default function Home() {
                 body: JSON.stringify({ url: normalizedUrl }),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
+        const data = await res.json();
         setError(data.error || "Something went wrong.");
-      } else {
-        setReport(data.report);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event: StreamEvent<{ report: Report; rawData: ExtractedSiteData }> =
+            JSON.parse(line);
+
+          if (event.type === "stage") {
+            setActiveStage(event.stage);
+          } else if (event.type === "result") {
+            setReport(event.data.report);
+          } else if (event.type === "error") {
+            setError(event.error);
+          }
+        }
       }
     } catch (err) {
       setError("Failed to connect. Please try again.");
     } finally {
       setLoading(false);
+      setActiveStage(null);
     }
   };
 
@@ -102,6 +132,8 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      {loading && <ProgressIndicator stage={activeStage} />}
 
       {error && (
         <div className="mt-6 w-full max-w-xl bg-[#2a1616] border border-[var(--danger)] text-[#ffb4b4] px-4 py-3 rounded-lg font-mono text-sm">
