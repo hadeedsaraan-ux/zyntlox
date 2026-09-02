@@ -63,3 +63,27 @@ body {
 .stage-fade {
   animation: stage-fade 2.4s ease-in-out forwards;
 }
+
+@keyframes text-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.gemini-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--stage-text) 35%,
+    #fff1d8 50%,
+    var(--stage-text) 65%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--stage-text);
+  animation: text-shimmer 2.2s linear infinite;
+}
