@@ -1,26 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callGeminiWithRetry } from "../../lib/gemini";
-import { fetchSiteData } from "../../lib/siteData";
+import { fetchSiteData, ExtractedSiteData } from "../../lib/siteData";
+import { createProgressStream } from "../../lib/progress";
+import { Report } from "../../lib/types";
 
 export async function POST(request: NextRequest) {
-  try {
-    const { url } = await request.json();
+  const { url } = await request.json();
 
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 });
-    }
+  if (!url) {
+    return NextResponse.json({ error: "URL is required" }, { status: 400 });
+  }
 
-    const siteData = await fetchSiteData(url);
-    if (!siteData.ok) {
-      return NextResponse.json({ error: siteData.error }, { status: 400 });
-    }
+  const { stream, sendStage, sendResult, sendError } = createProgressStream<{
+    report: Report;
+    rawData: ExtractedSiteData;
+  }>();
 
-    const { extractedData, screenshotBase64 } = siteData;
+  (async () => {
+    try {
+      const siteData = await fetchSiteData(url, sendStage);
+      if (!siteData.ok) {
+        sendError(siteData.error);
+        return;
+      }
 
-    // Build the Gemini prompt (with image if we have one)
-    const promptText = `You are a brutally honest but helpful website reviewer. Analyze this website${
-      screenshotBase64 ? " (both the data below AND the attached screenshot image)" : ""
-    } and return a JSON report.
+      const { extractedData, screenshotBase64 } = siteData;
+
+      // Build the Gemini prompt (with image if we have one)
+      const promptText = `You are a brutally honest but helpful website reviewer. Analyze this website${
+        screenshotBase64 ? " (both the data below AND the attached screenshot image)" : ""
+      } and return a JSON report.
 
 Website data:
 - Title: ${extractedData.title}
@@ -50,38 +59,41 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
   "plainSuggestions": ["<same items, same order, plain English>"]
 }`;
 
-    const parts: any[] = [{ text: promptText }];
-    if (screenshotBase64) {
-      parts.push({
-        inline_data: {
-          mime_type: "image/png",
-          data: screenshotBase64,
-        },
-      });
+      const parts: any[] = [{ text: promptText }];
+      if (screenshotBase64) {
+        parts.push({
+          inline_data: {
+            mime_type: "image/png",
+            data: screenshotBase64,
+          },
+        });
+      }
+
+      let geminiData;
+      try {
+        geminiData = await callGeminiWithRetry(parts, sendStage);
+      } catch (err) {
+        console.error("Gemini failed after all retries/fallbacks:", err);
+        sendError("AI analysis failed. Please try again in a moment.");
+        return;
+      }
+
+      let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+
+      const report = JSON.parse(aiText);
+
+      sendResult({ report, rawData: extractedData });
+    } catch (error) {
+      console.error(error);
+      sendError("Something went wrong while analyzing the website.");
     }
+  })();
 
-    let geminiData;
-    try {
-      geminiData = await callGeminiWithRetry(parts);
-    } catch (err) {
-      console.error("Gemini failed after all retries/fallbacks:", err);
-      return NextResponse.json(
-        { error: "AI analysis failed. Please try again in a moment." },
-        { status: 500 }
-      );
-    }
-
-    let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-    aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-
-    const report = JSON.parse(aiText);
-
-    return NextResponse.json({ success: true, report, rawData: extractedData });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json(
-      { error: "Something went wrong while analyzing the website." },
-      { status: 500 }
-    );
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-store",
+    },
+  });
 }

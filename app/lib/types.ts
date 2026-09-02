@@ -1,5 +1,15 @@
 export type ReportMode = "technical" | "plain";
 
+export interface ProgressStage {
+  id: string;
+  label: string;
+}
+
+export type StreamEvent<T> =
+  | { type: "stage"; stage: ProgressStage }
+  | { type: "result"; data: T }
+  | { type: "error"; error: string };
+
 export interface Problem {
   issue: string;
   plainIssue: string;

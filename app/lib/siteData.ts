@@ -1,3 +1,5 @@
+import { ProgressStage } from "./types";
+
 export interface ExtractedSiteData {
   title: string;
   metaDescription: string;
@@ -11,8 +13,22 @@ export type SiteDataResult =
   | { ok: true; extractedData: ExtractedSiteData; screenshotBase64: string | null }
   | { ok: false; error: string };
 
-export async function fetchSiteData(url: string): Promise<SiteDataResult> {
+export async function fetchSiteData(
+  url: string,
+  onStage?: (stage: ProgressStage) => void,
+  siteLabel?: string
+): Promise<SiteDataResult> {
+  const hostname = (() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return url;
+    }
+  })();
+  const prefix = siteLabel ? `${siteLabel}: ` : "";
+
   // Step 1: Fetch the website HTML
+  onStage?.({ id: "fetch_html", label: `${prefix}Fetching ${hostname}` });
   let response: Response;
   try {
     response = await fetch(url, {
@@ -56,6 +72,7 @@ export async function fetchSiteData(url: string): Promise<SiteDataResult> {
   };
 
   // Step 3: Get a screenshot via Microlink (free, no API key needed)
+  onStage?.({ id: "microlink", label: `${prefix}Capturing screenshot (Microlink)` });
   let screenshotBase64: string | null = null;
   try {
     const screenshotRes = await fetch(

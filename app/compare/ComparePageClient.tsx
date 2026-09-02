@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import CompetitorComparison from "../components/CompetitorComparison";
 import ModeToggle from "../components/ModeToggle";
-import { ComparisonReport, ReportMode } from "../lib/types";
+import ProgressIndicator from "../components/ProgressIndicator";
+import { ComparisonReport, ReportMode, ProgressStage, StreamEvent } from "../lib/types";
 
 export default function ComparePageClient() {
   const [yourUrl, setYourUrl] = useState("");
@@ -13,6 +14,7 @@ export default function ComparePageClient() {
   const [comparison, setComparison] = useState<ComparisonReport | null>(null);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<ReportMode>("technical");
+  const [activeStage, setActiveStage] = useState<ProgressStage | null>(null);
 
   const handleCompare = async () => {
     if (!yourUrl || !competitorUrl) {
@@ -29,6 +31,7 @@ export default function ComparePageClient() {
     setLoading(true);
     setComparison(null);
     setError("");
+    setActiveStage(null);
 
     try {
       const res = await fetch("/api/compare", {
@@ -40,17 +43,42 @@ export default function ComparePageClient() {
         }),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
+        const data = await res.json();
         setError(data.error || "Something went wrong.");
-      } else {
-        setComparison(data.comparison);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event: StreamEvent<{ comparison: ComparisonReport }> = JSON.parse(line);
+
+          if (event.type === "stage") {
+            setActiveStage(event.stage);
+          } else if (event.type === "result") {
+            setComparison(event.data.comparison);
+          } else if (event.type === "error") {
+            setError(event.error);
+          }
+        }
       }
     } catch {
       setError("Failed to connect. Please try again.");
     } finally {
       setLoading(false);
+      setActiveStage(null);
     }
   };
 
@@ -118,6 +146,8 @@ export default function ComparePageClient() {
           {loading ? "Comparing..." : "⚔️ Compare It"}
         </button>
       </div>
+
+      {loading && <ProgressIndicator stage={activeStage} />}
 
       {error && (
         <div className="mt-6 w-full max-w-xl bg-[#2a1616] border border-[var(--danger)] text-[#ffb4b4] px-4 py-3 rounded-lg font-mono text-sm">
