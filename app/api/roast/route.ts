@@ -38,8 +38,11 @@ Website data:
 - Total Images: ${extractedData.totalImages}
 - Images Missing Alt Text: ${extractedData.imagesWithoutAlt}
 - Uses HTTPS: ${extractedData.hasHttps}
+- Detected Tech Stack: ${extractedData.detectedStack}
 
 For every text field below, provide TWO versions: a "technical" version (fine to use terms like UX, SEO, CTA, alt text) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, same problems, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
+
+For every item in "quickWins" and "suggestions", include a "snippet" only when the fix can be expressed as a concrete, ready-to-paste code change (e.g. missing alt text, a color/contrast fix, a missing meta tag, a heading structure fix). Write the snippet in a style matching the Detected Tech Stack above (use JSX for React/Next.js, PHP-friendly HTML for WordPress, otherwise plain HTML/CSS), and use realistic values pulled from the actual website data above where possible (real image context, real heading text) instead of generic placeholders like "TODO". If an item is not a code fix (e.g. content, copy, or strategy advice), set "snippet" to null. Do not force a snippet where one doesn't make sense.
 
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
@@ -53,10 +56,12 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
   "biggestProblems": [
     {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
   ],
-  "quickWins": ["<technical, fixable in 10-30 min>"],
-  "plainQuickWins": ["<same items, same order, plain English>"],
-  "suggestions": ["<specific actionable technical suggestion>"],
-  "plainSuggestions": ["<same items, same order, plain English>"]
+  "quickWins": [
+    {"text": "<technical, fixable in 10-30 min>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+  ],
+  "suggestions": [
+    {"text": "<specific actionable technical suggestion>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+  ]
 }`;
 
       const parts: any[] = [{ text: promptText }];

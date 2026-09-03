@@ -7,6 +7,18 @@ export interface ExtractedSiteData {
   totalImages: number;
   imagesWithoutAlt: number;
   hasHttps: boolean;
+  detectedStack: string;
+}
+
+function detectStack(html: string): string {
+  if (/id=["']__next["']|_next\/static/i.test(html)) return "Next.js/React (JSX)";
+  if (/data-reactroot|id=["']root["'][^>]*>[\s\S]*react/i.test(html)) return "React (JSX)";
+  if (/wp-content|wp-includes/i.test(html)) return "WordPress (PHP/HTML)";
+  if (/data-v-app|__vue/i.test(html)) return "Vue (HTML templates)";
+  if (/ng-version/i.test(html)) return "Angular (HTML templates)";
+  if (/cdn\.shopify\.com/i.test(html)) return "Shopify (Liquid/HTML)";
+  if (/wixstatic\.com/i.test(html)) return "Wix (HTML)";
+  return "plain HTML/CSS";
 }
 
 export type SiteDataResult =
@@ -69,6 +81,7 @@ export async function fetchSiteData(
     totalImages: imgMatches.length,
     imagesWithoutAlt,
     hasHttps,
+    detectedStack: detectStack(html),
   };
 
   // Step 3: Get a screenshot via Microlink (free, no API key needed)
