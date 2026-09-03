@@ -1,6 +1,7 @@
 import { Report, ReportMode } from "../lib/types";
 import { LABELS, IMPACT_LABELS, EFFORT_LABELS } from "../lib/labels";
 import ScoreGauge from "./ScoreGauge";
+import CodeSnippet from "./CodeSnippet";
 
 export default function RoastReport({
   report,
@@ -75,10 +76,18 @@ export default function RoastReport({
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--success)] mb-4">
           ✅ {labels.quickWins}
         </h3>
-        <ul className="space-y-2">
-          {(mode === "plain" ? report.plainQuickWins : report.quickWins)?.map((q, i) => (
-            <li key={i} className="text-[var(--text)] opacity-90 flex gap-2">
-              <span className="text-[var(--success)] font-mono">→</span> {q}
+        <ul className="space-y-3">
+          {report.quickWins?.map((q, i) => (
+            <li key={i} className="text-[var(--text)] opacity-90">
+              <div className="flex gap-2">
+                <span className="text-[var(--success)] font-mono shrink-0">→</span>
+                <span>{mode === "plain" ? q.plainText : q.text}</span>
+              </div>
+              {q.snippet && (
+                <div className="mt-2 ml-5">
+                  <CodeSnippet snippet={q.snippet} />
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -89,10 +98,18 @@ export default function RoastReport({
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--amber)] mb-4">
           💡 {labels.suggestions}
         </h3>
-        <ul className="space-y-2">
-          {(mode === "plain" ? report.plainSuggestions : report.suggestions)?.map((s, i) => (
-            <li key={i} className="text-[var(--text)] opacity-90 flex gap-2">
-              <span className="text-[var(--amber)] font-mono">→</span> {s}
+        <ul className="space-y-3">
+          {report.suggestions?.map((s, i) => (
+            <li key={i} className="text-[var(--text)] opacity-90">
+              <div className="flex gap-2">
+                <span className="text-[var(--amber)] font-mono shrink-0">→</span>
+                <span>{mode === "plain" ? s.plainText : s.text}</span>
+              </div>
+              {s.snippet && (
+                <div className="mt-2 ml-5">
+                  <CodeSnippet snippet={s.snippet} />
+                </div>
+              )}
             </li>
           ))}
         </ul>

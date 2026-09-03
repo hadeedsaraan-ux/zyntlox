@@ -34,24 +34,46 @@ export const sampleReport: Report = {
     },
   ],
   quickWins: [
-    "Move the 'Get Started' button above the fold.",
-    "Add alt text to the 12 product images currently missing it.",
-    "Compress the hero image — it's 4.2MB and slowing the whole page down.",
-  ],
-  plainQuickWins: [
-    "Move the main 'Get Started' button so it's visible without scrolling.",
-    "Add short descriptions to the 12 product photos that are missing them.",
-    "Shrink the big banner image at the top — it's huge and making the page slow to load.",
+    {
+      text: "Move the 'Get Started' button above the fold.",
+      plainText: "Move the main 'Get Started' button so it's visible without scrolling.",
+      snippet: null,
+    },
+    {
+      text: "Add alt text to the 12 product images currently missing it.",
+      plainText: "Add short descriptions to the 12 product photos that are missing them.",
+      snippet: {
+        language: "html",
+        code: '<img src="oak-dining-table.jpg" alt="Solid oak dining table, seats six, natural finish">',
+      },
+    },
+    {
+      text: "Compress the hero image — it's 4.2MB and slowing the whole page down.",
+      plainText:
+        "Shrink the big banner image at the top — it's huge and making the page slow to load.",
+      snippet: null,
+    },
   ],
   suggestions: [
-    "Add a visible trust signal (reviews, security badges, or a phone number) near the CTA.",
-    "Break up the long intro paragraph into scannable bullet points.",
-    "Set up a redirect from HTTP to HTTPS site-wide.",
-  ],
-  plainSuggestions: [
-    "Put something trustworthy — reviews, a security badge, or a phone number — right next to the main button.",
-    "Turn the long opening paragraph into a few short bullet points people can skim.",
-    "Make sure every page automatically loads the secure, locked version.",
+    {
+      text: "Add a visible trust signal (reviews, security badges, or a phone number) near the CTA.",
+      plainText:
+        "Put something trustworthy — reviews, a security badge, or a phone number — right next to the main button.",
+      snippet: null,
+    },
+    {
+      text: "Break up the long intro paragraph into scannable bullet points.",
+      plainText: "Turn the long opening paragraph into a few short bullet points people can skim.",
+      snippet: null,
+    },
+    {
+      text: "Increase contrast on the hero text — light grey on white fails WCAG AA.",
+      plainText: "Make the big headline text darker so it's easier to read against the white background.",
+      snippet: {
+        language: "css",
+        code: ".hero-text {\n  color: #1a1a1a;\n  background: #ffffff;\n}",
+      },
+    },
   ],
 };
 

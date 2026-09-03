@@ -135,6 +135,29 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 1.5,
   },
+  codeBlock: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 4,
+    padding: 8,
+    marginTop: 4,
+    marginLeft: 12,
+  },
+  codeLanguage: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 7,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: COLORS.muted,
+    marginBottom: 4,
+  },
+  codeText: {
+    fontFamily: "Courier",
+    fontSize: 8,
+    lineHeight: 1.4,
+    color: COLORS.text,
+  },
   footer: {
     position: "absolute",
     bottom: 20,
@@ -251,10 +274,18 @@ export default function ReportDocument({
           <Text style={[styles.sectionTitle, { color: COLORS.success }]}>
             {labels.quickWins}
           </Text>
-          {(mode === "plain" ? report.plainQuickWins : report.quickWins)?.map((q, i) => (
-            <View key={i} style={styles.listItem} wrap={false}>
-              <Text style={[styles.listArrow, { color: COLORS.success }]}>{"→"}</Text>
-              <Text style={styles.listText}>{q}</Text>
+          {report.quickWins?.map((q, i) => (
+            <View key={i} wrap={false}>
+              <View style={styles.listItem}>
+                <Text style={[styles.listArrow, { color: COLORS.success }]}>{"→"}</Text>
+                <Text style={styles.listText}>{mode === "plain" ? q.plainText : q.text}</Text>
+              </View>
+              {q.snippet && (
+                <View style={styles.codeBlock}>
+                  <Text style={styles.codeLanguage}>{q.snippet.language}</Text>
+                  <Text style={styles.codeText}>{q.snippet.code}</Text>
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -263,10 +294,18 @@ export default function ReportDocument({
           <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
             {labels.suggestions}
           </Text>
-          {(mode === "plain" ? report.plainSuggestions : report.suggestions)?.map((s, i) => (
-            <View key={i} style={styles.listItem} wrap={false}>
-              <Text style={[styles.listArrow, { color: COLORS.amber }]}>{"→"}</Text>
-              <Text style={styles.listText}>{s}</Text>
+          {report.suggestions?.map((s, i) => (
+            <View key={i} wrap={false}>
+              <View style={styles.listItem}>
+                <Text style={[styles.listArrow, { color: COLORS.amber }]}>{"→"}</Text>
+                <Text style={styles.listText}>{mode === "plain" ? s.plainText : s.text}</Text>
+              </View>
+              {s.snippet && (
+                <View style={styles.codeBlock}>
+                  <Text style={styles.codeLanguage}>{s.snippet.language}</Text>
+                  <Text style={styles.codeText}>{s.snippet.code}</Text>
+                </View>
+              )}
             </View>
           ))}
         </View>

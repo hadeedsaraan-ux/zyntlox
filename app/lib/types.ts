@@ -17,6 +17,17 @@ export interface Problem {
   effort: "Easy" | "Medium" | "Hard";
 }
 
+export interface CodeSnippet {
+  language: string;
+  code: string;
+}
+
+export interface ActionItem {
+  text: string;
+  plainText: string;
+  snippet: CodeSnippet | null;
+}
+
 export interface Report {
   overallScore: number;
   firstImpression: string;
@@ -26,10 +37,8 @@ export interface Report {
   uxScore: number;
   seoScore: number;
   biggestProblems: Problem[];
-  quickWins: string[];
-  plainQuickWins: string[];
-  suggestions: string[];
-  plainSuggestions: string[];
+  quickWins: ActionItem[];
+  suggestions: ActionItem[];
 }
 
 export type ComparisonWinner = "yours" | "competitor" | "tie";
