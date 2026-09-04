@@ -18,7 +18,10 @@ const styles = StyleSheet.create({
   page: {
     backgroundColor: COLORS.bg,
     color: COLORS.text,
-    padding: 32,
+    paddingTop: 32,
+    paddingLeft: 32,
+    paddingRight: 32,
+    paddingBottom: 48,
     fontSize: 10,
     fontFamily: "Helvetica",
   },
@@ -157,6 +160,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     lineHeight: 1.4,
     color: COLORS.text,
+    wordBreak: "break-all",
   },
   footer: {
     position: "absolute",
@@ -165,10 +169,47 @@ const styles = StyleSheet.create({
     right: 32,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+  },
+  footerTextLeft: {
+    fontSize: 8,
+    color: COLORS.muted,
+    fontFamily: "Helvetica-Bold",
+    letterSpacing: 0.5,
+  },
+  footerTextRight: {
     fontSize: 8,
     color: COLORS.muted,
   },
 });
+
+function cleanPdfText(str?: string | null): string {
+  if (!str) return "";
+  return (
+    str
+      // Convert literal sequence \n into actual newline
+      .replace(/\\n/g, "\n")
+      // Normalize line endings
+      .replace(/\r\n/g, "\n")
+      // Replace smart double quotes
+      .replace(/[“”]/g, '"')
+      // Replace smart single quotes
+      .replace(/[‘’]/g, "'")
+      // Replace em dash & en dash
+      .replace(/[—–]/g, "-")
+      // Replace non-breaking spaces
+      .replace(/\u00A0/g, " ")
+      // Replace bullets
+      .replace(/•/g, "*")
+      // Strip unsupported emojis/symbols outside WinAnsi
+      .replace(
+        /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1F004}\u{1F0CF}]/gu,
+        ""
+      )
+      // Remove unprintable control characters except newline
+      .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "")
+  );
+}
 
 function scoreColor(score: number) {
   if (score >= 70) return COLORS.success;
@@ -194,11 +235,11 @@ export default function ReportDocument({
   });
 
   return (
-    <Document title={`Zyntlox Report - ${url}`}>
+    <Document title={`Zyntlox Report - ${cleanPdfText(url)}`}>
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header}>
           <Text style={styles.wordmark}>ZYNTLOX</Text>
-          <Text style={styles.meta}>{url}</Text>
+          <Text style={styles.meta}>{cleanPdfText(url)}</Text>
           <Text style={styles.meta}>
             Generated {generatedAt} · {mode === "plain" ? "Plain English" : "Technical"} mode
           </Text>
@@ -229,7 +270,7 @@ export default function ReportDocument({
             {labels.firstImpression}
           </Text>
           <Text style={styles.bodyText}>
-            {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
+            {cleanPdfText(mode === "plain" ? report.plainFirstImpression : report.firstImpression)}
           </Text>
         </View>
 
@@ -250,71 +291,137 @@ export default function ReportDocument({
           ))}
         </View>
 
-        <View style={styles.card} wrap>
-          <Text style={[styles.sectionTitle, { color: COLORS.danger }]}>
-            {labels.biggestProblems}
-          </Text>
-          {report.biggestProblems?.map((p, i) => (
-            <View
-              key={i}
-              style={i === 0 ? styles.problemRowFirst : styles.problemRow}
-              wrap={false}
-            >
-              <Text style={styles.bodyText}>
-                {mode === "plain" ? p.plainIssue : p.issue}
-              </Text>
-              <Text style={styles.problemMeta}>
-                Impact: {IMPACT_LABELS[mode][p.impact]} · Effort: {EFFORT_LABELS[mode][p.effort]}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.card} wrap>
-          <Text style={[styles.sectionTitle, { color: COLORS.success }]}>
-            {labels.quickWins}
-          </Text>
-          {report.quickWins?.map((q, i) => (
-            <View key={i} wrap={false}>
-              <View style={styles.listItem}>
-                <Text style={[styles.listArrow, { color: COLORS.success }]}>{"→"}</Text>
-                <Text style={styles.listText}>{mode === "plain" ? q.plainText : q.text}</Text>
-              </View>
-              {q.snippet && (
-                <View style={styles.codeBlock}>
-                  <Text style={styles.codeLanguage}>{q.snippet.language}</Text>
-                  <Text style={styles.codeText}>{q.snippet.code}</Text>
+        {report.biggestProblems && report.biggestProblems.length > 0 && (
+          <View style={styles.card} wrap>
+            {report.biggestProblems.map((p, i) => {
+              const itemContent = (
+                <View
+                  style={i === 0 ? styles.problemRowFirst : styles.problemRow}
+                >
+                  <Text style={styles.bodyText}>
+                    {cleanPdfText(mode === "plain" ? p.plainIssue : p.issue)}
+                  </Text>
+                  <Text style={styles.problemMeta}>
+                    Impact: {IMPACT_LABELS[mode][p.impact]} · Effort: {EFFORT_LABELS[mode][p.effort]}
+                  </Text>
                 </View>
-              )}
-            </View>
-          ))}
-        </View>
+              );
 
-        <View style={styles.card} wrap>
-          <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
-            {labels.suggestions}
-          </Text>
-          {report.suggestions?.map((s, i) => (
-            <View key={i} wrap={false}>
-              <View style={styles.listItem}>
-                <Text style={[styles.listArrow, { color: COLORS.amber }]}>{"→"}</Text>
-                <Text style={styles.listText}>{mode === "plain" ? s.plainText : s.text}</Text>
-              </View>
-              {s.snippet && (
-                <View style={styles.codeBlock}>
-                  <Text style={styles.codeLanguage}>{s.snippet.language}</Text>
-                  <Text style={styles.codeText}>{s.snippet.code}</Text>
+              if (i === 0) {
+                return (
+                  <View key={i} wrap={false}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.danger }]}>
+                      {labels.biggestProblems}
+                    </Text>
+                    {itemContent}
+                  </View>
+                );
+              }
+
+              return (
+                <View key={i} wrap={false}>
+                  {itemContent}
                 </View>
-              )}
-            </View>
-          ))}
-        </View>
+              );
+            })}
+          </View>
+        )}
 
-        <Text
-          style={styles.footer}
-          render={({ pageNumber, totalPages }) => `Generated by zyntlox · Page ${pageNumber} of ${totalPages}`}
-          fixed
-        />
+        {report.quickWins && report.quickWins.length > 0 && (
+          <View style={styles.card} wrap>
+            {report.quickWins.map((q, i) => {
+              const itemContent = (
+                <View style={i > 0 ? { marginTop: 8 } : undefined}>
+                  <View style={styles.listItem}>
+                    <Text style={[styles.listArrow, { color: COLORS.success }]}>&gt;</Text>
+                    <Text style={styles.listText}>
+                      {cleanPdfText(mode === "plain" ? q.plainText : q.text)}
+                    </Text>
+                  </View>
+                  {q.snippet && (
+                    <View style={styles.codeBlock}>
+                      <Text style={styles.codeLanguage}>
+                        {cleanPdfText(q.snippet.language)}
+                      </Text>
+                      <Text style={styles.codeText}>
+                        {cleanPdfText(q.snippet.code)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+
+              if (i === 0) {
+                return (
+                  <View key={i} wrap={false}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.success }]}>
+                      {labels.quickWins}
+                    </Text>
+                    {itemContent}
+                  </View>
+                );
+              }
+
+              return (
+                <View key={i} wrap={false}>
+                  {itemContent}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {report.suggestions && report.suggestions.length > 0 && (
+          <View style={styles.card} wrap>
+            {report.suggestions.map((s, i) => {
+              const itemContent = (
+                <View style={i > 0 ? { marginTop: 8 } : undefined}>
+                  <View style={styles.listItem}>
+                    <Text style={[styles.listArrow, { color: COLORS.amber }]}>&gt;</Text>
+                    <Text style={styles.listText}>
+                      {cleanPdfText(mode === "plain" ? s.plainText : s.text)}
+                    </Text>
+                  </View>
+                  {s.snippet && (
+                    <View style={styles.codeBlock}>
+                      <Text style={styles.codeLanguage}>
+                        {cleanPdfText(s.snippet.language)}
+                      </Text>
+                      <Text style={styles.codeText}>
+                        {cleanPdfText(s.snippet.code)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+
+              if (i === 0) {
+                return (
+                  <View key={i} wrap={false}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
+                      {labels.suggestions}
+                    </Text>
+                    {itemContent}
+                  </View>
+                );
+              }
+
+              return (
+                <View key={i} wrap={false}>
+                  {itemContent}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerTextLeft}>ZYNTLOX REPORT</Text>
+          <Text
+            style={styles.footerTextRight}
+            render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+          />
+        </View>
       </Page>
     </Document>
   );
