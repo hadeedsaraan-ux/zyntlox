@@ -1,6 +1,6 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import { Report, ReportMode } from "../types";
-import { LABELS, IMPACT_LABELS, EFFORT_LABELS } from "../labels";
+import { CheckStatus, Report, ReportMode } from "../types";
+import { LABELS, IMPACT_LABELS, EFFORT_LABELS, SEO_CHECK_LABELS, formatSeoCheckDetail } from "../labels";
 
 const COLORS = {
   bg: "#1a1614",
@@ -105,6 +105,33 @@ const styles = StyleSheet.create({
   subScoreValue: {
     fontFamily: "Helvetica-Bold",
     fontSize: 16,
+  },
+  seoCheckRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 6,
+  },
+  seoCheckDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 3,
+    marginRight: 8,
+  },
+  seoCheckLabel: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+  },
+  seoCheckDetail: {
+    fontSize: 9,
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+  noticeBanner: {
+    fontSize: 8,
+    color: COLORS.muted,
+    marginBottom: 8,
+    fontStyle: "italic",
   },
   problemRow: {
     borderTopWidth: 1,
@@ -217,6 +244,12 @@ function scoreColor(score: number) {
   return COLORS.ember;
 }
 
+function statusColor(status: CheckStatus) {
+  if (status === "pass") return COLORS.success;
+  if (status === "warn") return COLORS.amber;
+  return COLORS.danger;
+}
+
 export default function ReportDocument({
   report,
   mode,
@@ -243,6 +276,9 @@ export default function ReportDocument({
           <Text style={styles.meta}>
             Generated {generatedAt} · {mode === "plain" ? "Plain English" : "Technical"} mode
           </Text>
+          {report.modelUsed !== "gemini-flash-latest" && (
+            <Text style={styles.meta}>{labels.backupModelNotice}</Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -290,6 +326,30 @@ export default function ReportDocument({
             </View>
           ))}
         </View>
+
+        {report.seoChecks && (
+          <View style={styles.card} wrap={false}>
+            <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
+              {labels.technicalSeoChecks}
+            </Text>
+            {!report.seoChecks.isVerified && (
+              <Text style={styles.noticeBanner}>{labels.seoUnverifiedNotice}</Text>
+            )}
+            {report.seoChecks.checks.map((check) => (
+              <View key={check.id} style={styles.seoCheckRow}>
+                <View
+                  style={[styles.seoCheckDot, { backgroundColor: statusColor(check.status) }]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.seoCheckLabel}>{SEO_CHECK_LABELS[mode][check.id]}</Text>
+                  <Text style={styles.seoCheckDetail}>
+                    {formatSeoCheckDetail(check, mode)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         {report.biggestProblems && report.biggestProblems.length > 0 && (
           <View style={styles.card} wrap>

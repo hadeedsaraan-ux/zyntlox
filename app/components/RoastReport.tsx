@@ -1,7 +1,13 @@
-import { Report, ReportMode } from "../lib/types";
-import { LABELS, IMPACT_LABELS, EFFORT_LABELS } from "../lib/labels";
+import { CheckStatus, Report, ReportMode } from "../lib/types";
+import { LABELS, IMPACT_LABELS, EFFORT_LABELS, SEO_CHECK_LABELS, formatSeoCheckDetail } from "../lib/labels";
 import ScoreGauge from "./ScoreGauge";
 import CodeSnippet from "./CodeSnippet";
+
+function statusDotClass(status: CheckStatus): string {
+  if (status === "pass") return "bg-[var(--success)]";
+  if (status === "warn") return "bg-[var(--amber)]";
+  return "bg-[var(--danger)]";
+}
 
 export default function RoastReport({
   report,
@@ -27,6 +33,11 @@ export default function RoastReport({
         <p className="text-[var(--text)] opacity-90 leading-relaxed">
           {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
         </p>
+        {report.modelUsed !== "gemini-flash-latest" && (
+          <p className="font-mono text-[10px] text-[var(--muted)] mt-2">
+            {labels.backupModelNotice}
+          </p>
+        )}
       </div>
 
       {/* Sub Scores */}
@@ -51,6 +62,37 @@ export default function RoastReport({
           </div>
         ))}
       </div>
+
+      {/* Technical SEO Checks */}
+      {report.seoChecks && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
+          <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--muted)] mb-4">
+            🔍 {labels.technicalSeoChecks}
+          </h3>
+          {!report.seoChecks.isVerified && (
+            <p className="font-mono text-[10px] text-[var(--muted)] italic mb-3">
+              {labels.seoUnverifiedNotice}
+            </p>
+          )}
+          <div className="space-y-3">
+            {report.seoChecks.checks.map((check) => (
+              <div key={check.id} className="flex gap-2">
+                <span
+                  className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${statusDotClass(check.status)}`}
+                />
+                <div>
+                  <p className="text-[var(--text)] font-semibold text-sm">
+                    {SEO_CHECK_LABELS[mode][check.id]}
+                  </p>
+                  <p className="text-[var(--muted)] text-sm">
+                    {formatSeoCheckDetail(check, mode)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Biggest Problems */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">

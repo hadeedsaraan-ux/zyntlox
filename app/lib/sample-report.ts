@@ -9,7 +9,56 @@ export const sampleReport: Report = {
   designScore: 4,
   trustScore: 3,
   uxScore: 5,
-  seoScore: 6,
+  seoScore: 5.9,
+  modelUsed: "gemini-flash-latest",
+  seoChecks: {
+    isVerified: true,
+    seoScore: 5.9,
+    checks: [
+      {
+        id: "https",
+        status: "fail",
+        pointsDeducted: 3.0,
+        values: { hasHttps: false },
+      },
+      {
+        id: "metaDescription",
+        status: "pass",
+        pointsDeducted: 0,
+        values: { present: true, length: 120 },
+      },
+      {
+        id: "title",
+        status: "pass",
+        pointsDeducted: 0,
+        values: { present: true, length: 50 },
+      },
+      {
+        id: "h1",
+        status: "pass",
+        pointsDeducted: 0,
+        values: { count: 1 },
+      },
+      {
+        id: "viewport",
+        status: "pass",
+        pointsDeducted: 0,
+        values: { present: true },
+      },
+      {
+        id: "canonical",
+        status: "fail",
+        pointsDeducted: 0.5,
+        values: { present: false },
+      },
+      {
+        id: "altText",
+        status: "warn",
+        pointsDeducted: 0.6,
+        values: { totalImages: 20, imagesWithAlt: 8, imagesWithoutAlt: 12 },
+      },
+    ],
+  },
   biggestProblems: [
     {
       issue: "No HTTPS on the checkout flow — browsers flag it as 'Not Secure'.",

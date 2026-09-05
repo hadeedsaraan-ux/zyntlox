@@ -1,5 +1,45 @@
-import { ComparisonReport, ComparisonWinner, ReportMode, SiteSummary } from "../lib/types";
+import { CheckStatus, ComparisonReport, ComparisonWinner, ReportMode, SeoChecks, SiteSummary } from "../lib/types";
+import { LABELS, SEO_CHECK_LABELS, formatSeoCheckDetail } from "../lib/labels";
 import ScoreGauge from "./ScoreGauge";
+
+function statusDotClass(status: CheckStatus): string {
+  if (status === "pass") return "bg-[var(--success)]";
+  if (status === "warn") return "bg-[var(--amber)]";
+  return "bg-[var(--danger)]";
+}
+
+function SeoChecksColumn({
+  title,
+  seoChecks,
+  mode,
+}: {
+  title: string;
+  seoChecks: SeoChecks;
+  mode: ReportMode;
+}) {
+  return (
+    <div>
+      <p className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase mb-3">
+        {title}
+      </p>
+      <div className="space-y-3">
+        {seoChecks.checks.map((check) => (
+          <div key={check.id} className="flex gap-2">
+            <span
+              className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${statusDotClass(check.status)}`}
+            />
+            <div>
+              <p className="text-[var(--text)] font-semibold text-sm">
+                {SEO_CHECK_LABELS[mode][check.id]}
+              </p>
+              <p className="text-[var(--muted)] text-sm">{formatSeoCheckDetail(check, mode)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function winnerLabel(winner: ComparisonWinner) {
   if (winner === "yours") return "You win";
@@ -78,12 +118,20 @@ export default function CompetitorComparison({
   comparison: ComparisonReport;
   mode?: ReportMode;
 }) {
+  const labels = LABELS[mode];
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SiteCard title="Your Site" site={comparison.yours} mode={mode} />
         <SiteCard title="Competitor Site" site={comparison.competitor} mode={mode} />
       </div>
+
+      {comparison.modelUsed !== "gemini-flash-latest" && (
+        <p className="font-mono text-[10px] text-[var(--muted)] text-center">
+          {labels.backupModelNotice}
+        </p>
+      )}
 
       {/* Overall verdict */}
       <div
@@ -131,6 +179,26 @@ export default function CompetitorComparison({
               </p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Technical SEO Checks */}
+      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
+        <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--muted)] mb-4">
+          🔍 {labels.technicalSeoChecks}
+        </h3>
+        {(!comparison.yourSeoChecks.isVerified || !comparison.competitorSeoChecks.isVerified) && (
+          <p className="font-mono text-[10px] text-[var(--muted)] italic mb-4">
+            {labels.seoUnverifiedNotice}
+          </p>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <SeoChecksColumn title="Your Site" seoChecks={comparison.yourSeoChecks} mode={mode} />
+          <SeoChecksColumn
+            title="Competitor Site"
+            seoChecks={comparison.competitorSeoChecks}
+            mode={mode}
+          />
         </div>
       </div>
 
