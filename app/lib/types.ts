@@ -30,6 +30,11 @@ export interface ActionItem {
 
 export type GeminiModel = "gemini-flash-latest" | "gemini-flash-lite-latest";
 
+/** A single element of the Gemini `contents[0].parts` array. */
+export type GeminiPart =
+  | { text: string }
+  | { inline_data: { mime_type: string; data: string } };
+
 export type CheckStatus = "pass" | "warn" | "fail";
 
 export interface SeoCheck {
@@ -61,13 +66,39 @@ export interface SeoFacts {
   titleLength: number;
   metaDescription: string | null;
   metaDescriptionLength: number;
+  /** H1 elements that actually contain text. */
   h1Count: number;
+  /**
+   * H1 elements present in the DOM, text-bearing or not. Distinguishes "no H1 at all"
+   * from "an H1 that holds only a logo image" — reporting the latter as "no H1 found"
+   * is a false claim.
+   */
+  h1ElementCount: number;
   viewportPresent: boolean;
   canonicalPresent: boolean;
   totalImages: number;
   imagesWithAlt: number;
   imagesWithoutAlt: number;
   isVerified: boolean;
+}
+
+export type CriterionRating = "good" | "adequate" | "poor";
+
+export interface CriterionResult {
+  id: string;
+  rating: CriterionRating;
+  /** Short observation the rating is based on — forces grounding before judging. */
+  evidence: string;
+}
+
+/**
+ * One subjective category. The model supplies `criteria` (observations); `score` is
+ * computed from them in code, so it never invents a number.
+ */
+export interface CategoryAssessment {
+  category: "design" | "trust" | "ux";
+  score: number;
+  criteria: CriterionResult[];
 }
 
 export interface Report {
@@ -79,6 +110,8 @@ export interface Report {
   uxScore: number;
   seoScore: number;
   seoChecks: SeoChecks;
+  /** Per-criterion breakdown behind designScore/trustScore/uxScore. */
+  assessments: CategoryAssessment[];
   modelUsed: GeminiModel;
   biggestProblems: Problem[];
   quickWins: ActionItem[];

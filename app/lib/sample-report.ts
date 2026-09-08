@@ -1,16 +1,56 @@
 import { Report } from "./types";
 
 export const sampleReport: Report = {
-  overallScore: 42,
+  overallScore: 40,
   firstImpression:
     "The page loads into a wall of dense text with no clear focal point — a visitor has to hunt for what the business actually sells before they've decided whether to stick around.",
   plainFirstImpression:
     "When someone lands on this page, they see a big block of text and can't tell what the business sells. Most people will just leave before figuring it out.",
-  designScore: 4,
-  trustScore: 3,
-  uxScore: 5,
+  // Scores below are derived from the criteria in `assessments` (5/12, 4/12, 4/12),
+  // and overallScore from those plus seoScore — same arithmetic the routes run.
+  designScore: 4.2,
+  trustScore: 3.3,
+  uxScore: 3.3,
   seoScore: 5.9,
   modelUsed: "gemini-flash-latest",
+  assessments: [
+    {
+      category: "design",
+      score: 4.2,
+      criteria: [
+        { id: "hierarchy", rating: "poor", evidence: "no dominant element; three blocks compete" },
+        { id: "spacing", rating: "poor", evidence: "text runs edge to edge, no margins" },
+        { id: "typography", rating: "adequate", evidence: "readable but four sizes in use" },
+        { id: "color", rating: "adequate", evidence: "muted palette, low contrast accents" },
+        { id: "imagery", rating: "adequate", evidence: "product photos present, inconsistent crops" },
+        { id: "consistency", rating: "good", evidence: "buttons share one style throughout" },
+      ],
+    },
+    {
+      category: "trust",
+      score: 3.3,
+      criteria: [
+        { id: "contactInfo", rating: "poor", evidence: "no phone, email or address visible" },
+        { id: "socialProof", rating: "poor", evidence: "no reviews or testimonials anywhere" },
+        { id: "identity", rating: "adequate", evidence: "short About link in footer only" },
+        { id: "polish", rating: "good", evidence: "no placeholder text or broken images" },
+        { id: "transparency", rating: "poor", evidence: "pricing not shown before checkout" },
+        { id: "legitimacy", rating: "adequate", evidence: "custom logo, otherwise stock layout" },
+      ],
+    },
+    {
+      category: "ux",
+      score: 3.3,
+      criteria: [
+        { id: "navClarity", rating: "adequate", evidence: "menu present, vague labels" },
+        { id: "primaryAction", rating: "poor", evidence: "main button sits below three scrolls" },
+        { id: "valueClarity", rating: "poor", evidence: "cannot tell what is sold on arrival" },
+        { id: "readability", rating: "good", evidence: "dark text on white, good contrast" },
+        { id: "scannability", rating: "poor", evidence: "one long unbroken intro paragraph" },
+        { id: "focus", rating: "adequate", evidence: "single column, but no clear path" },
+      ],
+    },
+  ],
   seoChecks: {
     isVerified: true,
     seoScore: 5.9,

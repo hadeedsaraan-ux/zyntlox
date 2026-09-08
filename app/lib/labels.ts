@@ -14,6 +14,7 @@ export const LABELS: Record<
     technicalSeoChecks: string;
     seoUnverifiedNotice: string;
     backupModelNotice: string;
+    scoreBreakdown: string;
   }
 > = {
   technical: {
@@ -29,6 +30,7 @@ export const LABELS: Record<
     seoUnverifiedNotice:
       "These checks are best-effort estimates from unrendered HTML (our screenshot/analysis service was unavailable) — some values may be inaccurate for JavaScript-heavy sites.",
     backupModelNotice: "Backup AI model used — subjective scores below may be less consistent than usual.",
+    scoreBreakdown: "Score Breakdown",
   },
   plain: {
     firstImpression: "What Visitors See",
@@ -43,6 +45,7 @@ export const LABELS: Record<
     seoUnverifiedNotice:
       "We couldn't fully load this page to double check these numbers, so a few of them below might be a little off.",
     backupModelNotice: "We used our backup AI for this one — a few of the opinions above might be a little less sharp than usual.",
+    scoreBreakdown: "How We Scored It",
   },
 };
 
@@ -100,7 +103,15 @@ export function formatSeoCheckDetail(check: SeoCheck, mode: ReportMode): string 
 
     case "h1": {
       const count = check.values.count as number;
+      const elementCount = (check.values.elementCount as number) ?? count;
       if (count === 0) {
+        // An H1 that exists but holds only an image is a different (and differently
+        // fixable) problem from having no H1 at all — saying "none found" would be false.
+        if (elementCount > 0) {
+          return plain
+            ? `The page's main heading contains only an image, so search engines see no heading text.`
+            : `${elementCount} H1 tag${elementCount > 1 ? "s" : ""} found, but with no text content (likely wrapping an image).`;
+        }
         return plain ? "No main heading was found on the page." : "No H1 heading found.";
       }
       if (count > 1) {

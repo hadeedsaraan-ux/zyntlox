@@ -3,7 +3,9 @@ import { callGeminiWithRetry } from "../../lib/gemini";
 import { fetchSiteData, ExtractedSiteData } from "../../lib/siteData";
 import { createProgressStream } from "../../lib/progress";
 import { computeSeoAudit } from "../../lib/seoAudit";
-import { computeOverallScore } from "../../lib/scoring";
+import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scoring";
+import { buildRoastParts } from "../../lib/prompts";
+import { hostOf, logEvent } from "../../lib/log";
 import { Report } from "../../lib/types";
 
 export async function POST(request: NextRequest) {
@@ -19,80 +21,47 @@ export async function POST(request: NextRequest) {
   }>();
 
   (async () => {
+    const requestStartedAt = Date.now();
+    const host = hostOf(url);
+
     try {
       const siteData = await fetchSiteData(url, sendStage);
       if (!siteData.ok) {
+        logEvent("roast.failed", {
+          stage: "fetch",
+          host,
+          error: siteData.error,
+          elapsedMs: Date.now() - requestStartedAt,
+        });
         sendError(siteData.error);
         return;
       }
 
-      const { extractedData, screenshotBase64 } = siteData;
+      const { extractedData, screenshotBase64, markdown, timings } = siteData;
       const seoChecks = computeSeoAudit(extractedData);
 
-      // Build the Gemini prompt (with image if we have one)
-      const promptText = `You are a brutally honest but helpful website reviewer. Analyze this website${
-        screenshotBase64 ? " (both the data below AND the attached screenshot image)" : ""
-      } and return a JSON report.
-
-Website data:
-- Title: ${extractedData.title ?? "No title found"}
-- Meta Description: ${extractedData.metaDescription ?? "No meta description found"}
-- H1 Headings: ${extractedData.h1Tags.join(", ") || "None found"}
-- Total Images: ${extractedData.totalImages}
-- Images Missing Alt Text: ${extractedData.imagesWithoutAlt}
-- Uses HTTPS: ${extractedData.hasHttps}
-- Detected Tech Stack: ${extractedData.detectedStack}
-
-Pre-verified SEO facts (already computed by code — treat as ground truth, do NOT recompute or restate differently):
-- HTTPS: ${extractedData.hasHttps}
-- Meta description: ${extractedData.metaDescription ? "present" : "missing"}, ${extractedData.metaDescriptionLength} characters
-- Title length: ${extractedData.titleLength} characters
-- H1 tags found: ${extractedData.h1Count}
-- Viewport tag: ${extractedData.viewportPresent ? "present" : "missing"}
-- Canonical tag: ${extractedData.canonicalPresent ? "present" : "missing"}
-- Images missing alt text: ${extractedData.imagesWithoutAlt} of ${extractedData.totalImages}
-- Computed technical SEO score (already final — do not output your own seoScore or overallScore): ${seoChecks.seoScore}/10
-
-IMPORTANT: The SEO facts above are already verified by code. Do NOT invent your own counts, percentages, or scores for anything listed above. If your prose (firstImpression, biggestProblems, quickWins, suggestions) references any of these specific facts, you must reuse the exact figures given verbatim — do not recalculate, round differently, or estimate your own numbers for these items. Do not comment on SEO technical facts already listed above (meta description, H1 count, alt text, viewport, canonical, title length) in biggestProblems/quickWins/suggestions — a separate Technical SEO Checks section already covers those verbatim. Focus your problems/wins/suggestions on Design, Trust, UX, and genuinely subjective/strategic issues instead.
-
-For every text field below, provide TWO versions: a "technical" version (fine to use terms like UX, SEO, CTA, alt text) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, same problems, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
-
-For every item in "quickWins" and "suggestions", include a "snippet" only when the fix can be expressed as a concrete, ready-to-paste code change (e.g. a color/contrast fix or a heading structure fix — NOT alt text or meta tags, those are already handled by the Technical SEO Checks section). Write the snippet in a style matching the Detected Tech Stack above (use JSX for React/Next.js, PHP-friendly HTML for WordPress, otherwise plain HTML/CSS), and use realistic values pulled from the actual website data above where possible (real image context, real heading text) instead of generic placeholders like "TODO". If an item is not a code fix (e.g. content, copy, or strategy advice), set "snippet" to null. Do not force a snippet where one doesn't make sense.
-
-Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
-{
-  "firstImpression": "<technical: 2-3 sentences on what a visitor feels in the first 5 seconds>",
-  "plainFirstImpression": "<same idea, plain English, no jargon>",
-  "designScore": <number 0-10>,
-  "trustScore": <number 0-10>,
-  "uxScore": <number 0-10>,
-  "biggestProblems": [
-    {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
-  ],
-  "quickWins": [
-    {"text": "<technical, fixable in 10-30 min>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
-  ],
-  "suggestions": [
-    {"text": "<specific actionable technical suggestion>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
-  ]
-}`;
-
-      const parts: any[] = [{ text: promptText }];
-      if (screenshotBase64) {
-        parts.push({
-          inline_data: {
-            mime_type: "image/png",
-            data: screenshotBase64,
-          },
-        });
-      }
+      // Prompt construction lives in lib/prompts.ts so the diagnostics harness can
+      // replay the exact prompt production sends, rather than a copy that can drift.
+      const parts = buildRoastParts({ extractedData, seoChecks, screenshotBase64, markdown });
 
       let geminiData;
       let modelUsed;
+      let geminiAttempts = 0;
+      let geminiMs = 0;
       try {
-        ({ data: geminiData, modelUsed } = await callGeminiWithRetry(parts, sendStage));
+        const res = await callGeminiWithRetry(parts, sendStage);
+        geminiData = res.data;
+        modelUsed = res.modelUsed;
+        geminiAttempts = res.attempts;
+        geminiMs = res.latencyMs;
       } catch (err) {
         console.error("Gemini failed after all retries/fallbacks:", err);
+        logEvent("roast.failed", {
+          stage: "gemini",
+          host,
+          error: err instanceof Error ? err.message : String(err),
+          elapsedMs: Date.now() - requestStartedAt,
+        });
         sendError("AI analysis failed. Please try again in a moment.");
         return;
       }
@@ -100,26 +69,106 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
       let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
 
-      const aiReport = JSON.parse(aiText);
+      let aiReport;
+      try {
+        aiReport = JSON.parse(aiText);
+      } catch (err) {
+        console.error("Gemini returned malformed JSON:", err);
+        logEvent("roast.failed", {
+          stage: "parse",
+          host,
+          modelUsed,
+          error: err instanceof Error ? err.message : String(err),
+          elapsedMs: Date.now() - requestStartedAt,
+        });
+        sendError("The AI returned an unreadable response. Please try again.");
+        return;
+      }
 
+      // The model returns per-criterion ratings, not numbers. If any are missing or
+      // malformed we fail rather than defaulting the gaps — a score built on silent
+      // substitutions is the false precision this rework exists to remove.
+      const assessments = parseAssessments(aiReport);
+      if (!assessments) {
+        console.error("Gemini response missing valid criterion ratings:", {
+          design: aiReport.design,
+          trust: aiReport.trust,
+          ux: aiReport.ux,
+        });
+        logEvent("roast.failed", {
+          stage: "criteria",
+          host,
+          modelUsed,
+          elapsedMs: Date.now() - requestStartedAt,
+        });
+        sendError("The AI returned an incomplete analysis. Please try again.");
+        return;
+      }
+
+      const designScore = scoreOf(assessments, "design");
+      const trustScore = scoreOf(assessments, "trust");
+      const uxScore = scoreOf(assessments, "ux");
       const overallScore = computeOverallScore(
-        aiReport.designScore,
-        aiReport.trustScore,
-        aiReport.uxScore,
+        designScore,
+        trustScore,
+        uxScore,
         seoChecks.seoScore
       );
 
       const report: Report = {
         ...aiReport,
+        designScore,
+        trustScore,
+        uxScore,
         seoScore: seoChecks.seoScore,
         seoChecks,
+        assessments,
         overallScore,
         modelUsed,
       };
 
+      logEvent("roast.completed", {
+        host,
+        dataSource: extractedData.dataSource,
+        isVerified: extractedData.isVerified,
+        hasScreenshot: Boolean(screenshotBase64),
+        modelUsed,
+        modelFellBack: modelUsed !== "gemini-flash-latest",
+        geminiAttempts,
+        temperature: null, // production sends no generationConfig
+        designScore,
+        trustScore,
+        uxScore,
+        seoScore: seoChecks.seoScore,
+        overallScore,
+        titleLength: extractedData.titleLength,
+        metaDescriptionLength: extractedData.metaDescriptionLength,
+        h1Count: extractedData.h1Count,
+        h1ElementCount: extractedData.h1ElementCount,
+        totalImages: extractedData.totalImages,
+        imagesWithoutAlt: extractedData.imagesWithoutAlt,
+        viewportPresent: extractedData.viewportPresent,
+        canonicalPresent: extractedData.canonicalPresent,
+        hasHttps: extractedData.hasHttps,
+        detectedStack: extractedData.detectedStack,
+        scraperMs: timings.scraperMs,
+        htmlFetchMs: timings.htmlFetchMs,
+        markdownChars: markdown?.length ?? 0,
+        geminiMs,
+        totalMs: Date.now() - requestStartedAt,
+        promptChars: parts[0] && "text" in parts[0] ? parts[0].text.length : 0,
+        parseOk: true,
+      });
+
       sendResult({ report, rawData: extractedData });
     } catch (error) {
       console.error(error);
+      logEvent("roast.failed", {
+        stage: "unknown",
+        host,
+        error: error instanceof Error ? error.message : String(error),
+        elapsedMs: Date.now() - requestStartedAt,
+      });
       sendError("Something went wrong while analyzing the website.");
     }
   })();

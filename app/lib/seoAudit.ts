@@ -76,7 +76,10 @@ function computeTitleCheck(facts: SeoFacts): SeoCheck {
 }
 
 function computeH1Check(facts: SeoFacts): SeoCheck {
-  const { h1Count } = facts;
+  const { h1Count, h1ElementCount } = facts;
+
+  // Three distinct states, not two. An H1 that wraps only a logo image is a real SEO
+  // problem, but reporting it as "no H1 found" is a false claim about the page.
   const status: SeoCheck["status"] = h1Count === 0 ? "fail" : h1Count > 1 ? "warn" : "pass";
   const pointsDeducted = h1Count === 0 ? WEIGHTS.h1 : h1Count > 1 ? WEIGHTS.h1 * 0.5 : 0;
 
@@ -84,7 +87,7 @@ function computeH1Check(facts: SeoFacts): SeoCheck {
     id: "h1",
     status,
     pointsDeducted,
-    values: { count: h1Count },
+    values: { count: h1Count, elementCount: h1ElementCount },
   };
 }
 

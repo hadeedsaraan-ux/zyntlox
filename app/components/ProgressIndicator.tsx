@@ -5,7 +5,7 @@ import { ProgressStage } from "../lib/types";
 
 const ICONS: Record<string, string> = {
   fetch_html: "🌐",
-  microlink: "📸",
+  scraper: "📸",
 };
 
 // GEMINI_LINES[0] is the intro line — shown once per gemini stage, then never repeated.

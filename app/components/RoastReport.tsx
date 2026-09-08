@@ -1,11 +1,18 @@
-import { CheckStatus, Report, ReportMode } from "../lib/types";
+import { CheckStatus, CriterionRating, Report, ReportMode } from "../lib/types";
 import { LABELS, IMPACT_LABELS, EFFORT_LABELS, SEO_CHECK_LABELS, formatSeoCheckDetail } from "../lib/labels";
+import { criterionLabel } from "../lib/criteria";
 import ScoreGauge from "./ScoreGauge";
 import CodeSnippet from "./CodeSnippet";
 
 function statusDotClass(status: CheckStatus): string {
   if (status === "pass") return "bg-[var(--success)]";
   if (status === "warn") return "bg-[var(--amber)]";
+  return "bg-[var(--danger)]";
+}
+
+function ratingDotClass(rating: CriterionRating): string {
+  if (rating === "good") return "bg-[var(--success)]";
+  if (rating === "adequate") return "bg-[var(--amber)]";
   return "bg-[var(--danger)]";
 }
 
@@ -62,6 +69,47 @@ export default function RoastReport({
           </div>
         ))}
       </div>
+
+      {/* Score breakdown — the criteria each subjective score was computed from */}
+      {report.assessments && report.assessments.length > 0 && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
+          <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--amber)] mb-4">
+            📊 {labels.scoreBreakdown}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {report.assessments.map((a) => (
+              <div key={a.category}>
+                <div className="flex items-baseline justify-between mb-3">
+                  <p className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase">
+                    {labels[a.category]}
+                  </p>
+                  <p className="font-mono text-sm font-bold">
+                    {a.score}
+                    <span className="text-[var(--muted)]">/10</span>
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {a.criteria.map((c) => (
+                    <div key={c.id} className="flex gap-2">
+                      <span
+                        className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${ratingDotClass(c.rating)}`}
+                      />
+                      <div>
+                        <p className="text-[var(--text)] text-sm">
+                          {criterionLabel(c.id, mode)}
+                        </p>
+                        {c.evidence && (
+                          <p className="text-[var(--muted)] text-xs">{c.evidence}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Technical SEO Checks */}
       {report.seoChecks && (

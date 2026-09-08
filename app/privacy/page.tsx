@@ -35,15 +35,16 @@ export default function PrivacyPage() {
               <li className="flex gap-2">
                 <span className="text-[var(--amber)] font-mono">→</span>
                 <span>
-                  The URL you submit, and the public HTML of that page, are sent to{" "}
-                  <strong>Google Gemini</strong> for analysis.
+                  The URL you submit is sent to our own scraping service, which loads the
+                  page in a headless browser to capture a screenshot and its text. Pages are
+                  processed in memory and are not stored.
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="text-[var(--amber)] font-mono">→</span>
                 <span>
-                  A screenshot of the submitted page is generated via{" "}
-                  <strong>Microlink</strong> and also sent to Google Gemini as part of the analysis.
+                  That screenshot and page text, along with facts we extract from the
+                  public HTML, are sent to <strong>Google Gemini</strong> for analysis.
                 </span>
               </li>
               <li className="flex gap-2">

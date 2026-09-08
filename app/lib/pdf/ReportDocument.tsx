@@ -1,6 +1,7 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import { CheckStatus, Report, ReportMode } from "../types";
+import { CheckStatus, CriterionRating, Report, ReportMode } from "../types";
 import { LABELS, IMPACT_LABELS, EFFORT_LABELS, SEO_CHECK_LABELS, formatSeoCheckDetail } from "../labels";
+import { criterionLabel } from "../criteria";
 
 const COLORS = {
   bg: "#1a1614",
@@ -133,6 +134,50 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontStyle: "italic",
   },
+  breakdownGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  breakdownColumn: {
+    flex: 1,
+  },
+  breakdownHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 5,
+  },
+  breakdownCategory: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: COLORS.muted,
+  },
+  breakdownScore: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 10,
+  },
+  criterionRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 4,
+  },
+  criterionDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 3,
+    marginRight: 5,
+  },
+  criterionLabel: {
+    fontSize: 8,
+    color: COLORS.text,
+  },
+  criterionEvidence: {
+    fontSize: 7,
+    color: COLORS.muted,
+  },
   problemRow: {
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
@@ -250,6 +295,12 @@ function statusColor(status: CheckStatus) {
   return COLORS.danger;
 }
 
+function ratingColor(rating: CriterionRating) {
+  if (rating === "good") return COLORS.success;
+  if (rating === "adequate") return COLORS.amber;
+  return COLORS.danger;
+}
+
 export default function ReportDocument({
   report,
   mode,
@@ -326,6 +377,44 @@ export default function ReportDocument({
             </View>
           ))}
         </View>
+
+        {report.assessments && report.assessments.length > 0 && (
+          <View style={styles.card} wrap={false}>
+            <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
+              {labels.scoreBreakdown}
+            </Text>
+            <View style={styles.breakdownGrid}>
+              {report.assessments.map((a) => (
+                <View key={a.category} style={styles.breakdownColumn}>
+                  <View style={styles.breakdownHeader}>
+                    <Text style={styles.breakdownCategory}>{labels[a.category]}</Text>
+                    <Text style={styles.breakdownScore}>
+                      {a.score}
+                      <Text style={{ fontSize: 7, color: COLORS.muted }}>/10</Text>
+                    </Text>
+                  </View>
+                  {a.criteria.map((c) => (
+                    <View key={c.id} style={styles.criterionRow}>
+                      <View
+                        style={[styles.criterionDot, { backgroundColor: ratingColor(c.rating) }]}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.criterionLabel}>
+                          {cleanPdfText(criterionLabel(c.id, mode))}
+                        </Text>
+                        {c.evidence ? (
+                          <Text style={styles.criterionEvidence}>
+                            {cleanPdfText(c.evidence)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {report.seoChecks && (
           <View style={styles.card} wrap={false}>
