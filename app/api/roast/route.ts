@@ -3,6 +3,7 @@ import { callGeminiWithRetry } from "../../lib/gemini";
 import { fetchSiteData, ExtractedSiteData } from "../../lib/siteData";
 import { createProgressStream } from "../../lib/progress";
 import { computeSeoAudit } from "../../lib/seoAudit";
+import { computeContentChecks } from "../../lib/contentChecks";
 import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scoring";
 import { buildRoastParts } from "../../lib/prompts";
 import { hostOf, logEvent } from "../../lib/log";
@@ -37,8 +38,12 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      const { extractedData, screenshotBase64, markdown, timings } = siteData;
+      const { extractedData, screenshotBase64, markdown, fullMarkdown, timings } = siteData;
       const seoChecks = computeSeoAudit(extractedData);
+
+      // The code tier: criteria answered deterministically rather than by the model.
+      // Runs on the UNCAPPED markdown — footer links are what the prompt cap truncates.
+      const contentChecks = computeContentChecks(fullMarkdown);
 
       // Prompt construction lives in lib/prompts.ts so the diagnostics harness can
       // replay the exact prompt production sends, rather than a copy that can drift.
@@ -49,7 +54,7 @@ export async function POST(request: NextRequest) {
       let geminiAttempts = 0;
       let geminiMs = 0;
       try {
-        const res = await callGeminiWithRetry(parts, sendStage);
+        const res = await callGeminiWithRetry(parts, sendStage, { jsonMode: true });
         geminiData = res.data;
         modelUsed = res.modelUsed;
         geminiAttempts = res.attempts;
@@ -85,10 +90,12 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      // The model returns per-criterion ratings, not numbers. If any are missing or
-      // malformed we fail rather than defaulting the gaps — a score built on silent
-      // substitutions is the false precision this rework exists to remove.
-      const assessments = parseAssessments(aiReport);
+      // The model answers the AI tier; contentChecks supplies the code tier. Individual
+      // missing answers become "unclear" and drop out of scoring rather than failing the
+      // whole report — at ~45 criteria a single absent key is likely, and trading a small
+      // inaccuracy for a total outage would be the wrong call. parseAssessments still
+      // returns null when a category is too sparse to score honestly.
+      const assessments = parseAssessments(aiReport, contentChecks);
       if (!assessments) {
         console.error("Gemini response missing valid criterion ratings:", {
           design: aiReport.design,
@@ -143,10 +150,7 @@ export async function POST(request: NextRequest) {
         overallScore,
         titleLength: extractedData.titleLength,
         metaDescriptionLength: extractedData.metaDescriptionLength,
-        h1Count: extractedData.h1Count,
-        h1ElementCount: extractedData.h1ElementCount,
-        totalImages: extractedData.totalImages,
-        imagesWithoutAlt: extractedData.imagesWithoutAlt,
+        isNoindex: extractedData.isNoindex,
         viewportPresent: extractedData.viewportPresent,
         canonicalPresent: extractedData.canonicalPresent,
         hasHttps: extractedData.hasHttps,
@@ -154,6 +158,12 @@ export async function POST(request: NextRequest) {
         scraperMs: timings.scraperMs,
         htmlFetchMs: timings.htmlFetchMs,
         markdownChars: markdown?.length ?? 0,
+        fullMarkdownChars: fullMarkdown?.length ?? 0,
+        markdownTruncated: (fullMarkdown?.length ?? 0) > (markdown?.length ?? 0),
+        criteriaUnclear: assessments.reduce(
+          (n, a) => n + a.criteria.filter((c) => c.rating === "unclear").length,
+          0
+        ),
         geminiMs,
         totalMs: Date.now() - requestStartedAt,
         promptChars: parts[0] && "text" in parts[0] ? parts[0].text.length : 0,

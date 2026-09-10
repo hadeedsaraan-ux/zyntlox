@@ -1,24 +1,142 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callGeminiWithRetry } from "../../lib/gemini";
-import { fetchSiteData } from "../../lib/siteData";
+import { fetchSiteData, SiteDataResult } from "../../lib/siteData";
 import { createProgressStream } from "../../lib/progress";
 import { computeSeoAudit } from "../../lib/seoAudit";
-import { computeOverallScore } from "../../lib/scoring";
-import { buildCompareParts } from "../../lib/prompts";
+import { computeContentChecks } from "../../lib/contentChecks";
+import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scoring";
+import { buildRoastParts, buildCompareParts, ComparisonSide } from "../../lib/prompts";
+import { criterionDef, criterionLabel, criterionWeight } from "../../lib/criteria";
 import { hostOf, logEvent } from "../../lib/log";
-import { ComparisonCategory, ComparisonReport, ComparisonWinner } from "../../lib/types";
+import {
+  CategoryAssessment,
+  ComparisonCategory,
+  ComparisonReport,
+  ComparisonWinner,
+  CriterionResult,
+  ReportMode,
+  SeoChecks,
+} from "../../lib/types";
 
-/** Gemini must return these as finite numbers or overallScore silently becomes NaN. */
-function isValidScore(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+/** How many strengths/weaknesses to surface per site in the summary. */
+const HIGHLIGHT_COUNT = 4;
+
+interface SiteAssessment {
+  url: string;
+  seoChecks: SeoChecks;
+  assessments: CategoryAssessment[];
+  designScore: number;
+  trustScore: number;
+  uxScore: number;
+  overallScore: number;
+  firstImpression: string;
+  plainFirstImpression: string;
+  dataSource: string;
+  isVerified: boolean;
 }
 
-function hasValidScores(category: ComparisonCategory | undefined): category is ComparisonCategory {
-  return (
-    category !== undefined &&
-    isValidScore(category.yourScore) &&
-    isValidScore(category.competitorScore)
-  );
+/**
+ * Runs the SAME assessment a single-site report runs: identical rubric, identical prompt,
+ * identical scoring code. That is the whole point of this rewrite — previously the
+ * comparison asked Gemini for `"yourScore": <0-10>` directly, so the two products could
+ * disagree about the same website, and the comparison page was the one place left where a
+ * score was invented rather than computed.
+ */
+async function assessSite(site: Extract<SiteDataResult, { ok: true }>, url: string): Promise<SiteAssessment> {
+  const seoChecks = computeSeoAudit(site.extractedData);
+  const contentChecks = computeContentChecks(site.fullMarkdown);
+
+  const parts = buildRoastParts({
+    extractedData: site.extractedData,
+    seoChecks,
+    screenshotBase64: site.screenshotBase64,
+    markdown: site.markdown,
+  });
+
+  const { data } = await callGeminiWithRetry(parts, undefined, { jsonMode: true });
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  const parsed = JSON.parse(raw.replace(/```json/g, "").replace(/```/g, "").trim());
+
+  const assessments = parseAssessments(parsed, contentChecks);
+  if (!assessments) {
+    throw new Error(`Incomplete criterion ratings for ${url}`);
+  }
+
+  const designScore = scoreOf(assessments, "design");
+  const trustScore = scoreOf(assessments, "trust");
+  const uxScore = scoreOf(assessments, "ux");
+
+  return {
+    url,
+    seoChecks,
+    assessments,
+    designScore,
+    trustScore,
+    uxScore,
+    overallScore: computeOverallScore(designScore, trustScore, uxScore, seoChecks.seoScore),
+    firstImpression: typeof parsed.firstImpression === "string" ? parsed.firstImpression : "",
+    plainFirstImpression:
+      typeof parsed.plainFirstImpression === "string" ? parsed.plainFirstImpression : "",
+    dataSource: site.extractedData.dataSource,
+    isVerified: site.extractedData.isVerified,
+  };
+}
+
+/**
+ * Picks the criteria worth naming, heaviest-weighted first. Derived from the ratings
+ * rather than asked of the model: these are already-settled facts, so generating them
+ * would be inventing a second opinion about data we hold.
+ */
+function highlights(
+  assessments: CategoryAssessment[],
+  rating: CriterionResult["rating"],
+  mode: ReportMode
+): string[] {
+  return assessments
+    .flatMap((a) => a.criteria)
+    .filter((c) => c.rating === rating)
+    .sort((a, b) => {
+      const wa = criterionDef(a.id);
+      const wb = criterionDef(b.id);
+      return (wb ? criterionWeight(wb) : 1) - (wa ? criterionWeight(wa) : 1);
+    })
+    .slice(0, HIGHLIGHT_COUNT)
+    .map((c) => {
+      const label = criterionLabel(c.id, mode);
+      return c.evidence ? `${label}: ${c.evidence}` : label;
+    });
+}
+
+/** All criterion labels a site met / failed, for the comparison writer's evidence. */
+function criteriaSplit(assessments: CategoryAssessment[]): { met: string[]; failed: string[] } {
+  const all = assessments.flatMap((a) => a.criteria);
+  return {
+    met: all.filter((c) => c.rating === "yes").map((c) => criterionLabel(c.id, "technical")),
+    failed: all.filter((c) => c.rating === "no").map((c) => criterionLabel(c.id, "technical")),
+  };
+}
+
+function toSide(a: SiteAssessment): ComparisonSide {
+  const split = criteriaSplit(a.assessments);
+  return {
+    url: a.url,
+    designScore: a.designScore,
+    trustScore: a.trustScore,
+    uxScore: a.uxScore,
+    seoScore: a.seoChecks.seoScore,
+    overallScore: a.overallScore,
+    firstImpression: a.firstImpression,
+    met: split.met,
+    failed: split.failed,
+  };
+}
+
+/** A category is a tie inside this margin, on the 0-10 scale. */
+const TIE_MARGIN = 0.5;
+
+function winnerOf(yours: number, competitor: number): ComparisonWinner {
+  if (Math.abs(yours - competitor) <= TIE_MARGIN) return "tie";
+  return yours > competitor ? "yours" : "competitor";
 }
 
 export async function POST(request: NextRequest) {
@@ -52,111 +170,139 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      const yourSeoChecks = computeSeoAudit(yourSite.extractedData);
-      const competitorSeoChecks = computeSeoAudit(competitorSite.extractedData);
-
-      // Prompt construction lives in lib/prompts.ts so the diagnostics harness can
-      // replay the exact prompt production sends, rather than a copy that can drift.
-      const parts = buildCompareParts({
-        yourUrl,
-        competitorUrl,
-        yourData: yourSite.extractedData,
-        competitorData: competitorSite.extractedData,
-        yourSeoChecks,
-        competitorSeoChecks,
-        yourScreenshotBase64: yourSite.screenshotBase64,
-        competitorScreenshotBase64: competitorSite.screenshotBase64,
-      });
-
-      sendStage({ id: "gemini", label: "Analyzing both sites with Gemini AI" });
-      let geminiData;
-      let modelUsed;
+      // Both sites are assessed in parallel, so the wall time is one assessment, not two.
+      sendStage({ id: "gemini", label: "Scoring both sites against the checklist" });
+      let yours: SiteAssessment;
+      let competitor: SiteAssessment;
       try {
-        ({ data: geminiData, modelUsed } = await callGeminiWithRetry(parts, sendStage));
+        [yours, competitor] = await Promise.all([
+          assessSite(yourSite, yourUrl),
+          assessSite(competitorSite, competitorUrl),
+        ]);
       } catch (err) {
-        console.error("Gemini failed after all retries/fallbacks:", err);
+        console.error("Per-site assessment failed:", err);
+        logEvent("compare.failed", {
+          stage: "assess",
+          yoursHost: hostOf(yourUrl),
+          competitorHost: hostOf(competitorUrl),
+          error: err instanceof Error ? err.message : String(err),
+        });
         sendError("AI comparison failed. Please try again in a moment.");
         return;
       }
 
-      let aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-      aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-
-      let aiComparison;
+      // Every number below is now settled. The remaining call writes prose only.
+      sendStage({ id: "gemini", label: "Writing the head-to-head verdict" });
+      let modelUsed;
+      let narrative;
       try {
-        aiComparison = JSON.parse(aiText);
+        const res = await callGeminiWithRetry(
+          buildCompareParts({ yours: toSide(yours), competitor: toSide(competitor) }),
+          sendStage,
+          { jsonMode: true }
+        );
+        modelUsed = res.modelUsed;
+        const raw = res.data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        narrative = JSON.parse(raw.replace(/```json/g, "").replace(/```/g, "").trim());
       } catch (err) {
-        console.error("Gemini returned malformed JSON:", err);
-        sendError("The AI returned an unreadable response. Please try again.");
+        console.error("Comparison narrative failed:", err);
+        logEvent("compare.failed", {
+          stage: "narrative",
+          yoursHost: hostOf(yourUrl),
+          competitorHost: hostOf(competitorUrl),
+          error: err instanceof Error ? err.message : String(err),
+        });
+        sendError("AI comparison failed. Please try again in a moment.");
         return;
       }
 
-      const findCategory = (name: "Design" | "Trust" | "UX") =>
-        (aiComparison.categories as ComparisonCategory[] | undefined)?.find(
+      const verdictFor = (name: "Design" | "Trust" | "UX") => {
+        const found = (narrative.categories as ComparisonCategory[] | undefined)?.find(
           (c) => c.category === name
         );
-
-      const designCat = findCategory("Design");
-      const trustCat = findCategory("Trust");
-      const uxCat = findCategory("UX");
-
-      // Without this, a missing category throws a TypeError (or a missing score yields
-      // NaN scores) and surfaces only as the generic catch-all error below.
-      if (!hasValidScores(designCat) || !hasValidScores(trustCat) || !hasValidScores(uxCat)) {
-        console.error("Gemini comparison missing valid Design/Trust/UX categories:", {
-          categories: aiComparison.categories,
-        });
-        sendError("The AI returned an incomplete comparison. Please try again.");
-        return;
-      }
-
-      const yourOverallScore = computeOverallScore(
-        designCat.yourScore,
-        trustCat.yourScore,
-        uxCat.yourScore,
-        yourSeoChecks.seoScore
-      );
-      const competitorOverallScore = computeOverallScore(
-        designCat.competitorScore,
-        trustCat.competitorScore,
-        uxCat.competitorScore,
-        competitorSeoChecks.seoScore
-      );
-
-      const seoWinner: ComparisonWinner =
-        yourSeoChecks.seoScore === competitorSeoChecks.seoScore
-          ? "tie"
-          : yourSeoChecks.seoScore > competitorSeoChecks.seoScore
-          ? "yours"
-          : "competitor";
-
-      const seoCategory: ComparisonCategory = {
-        category: "SEO",
-        yourScore: yourSeoChecks.seoScore,
-        competitorScore: competitorSeoChecks.seoScore,
-        winner: seoWinner,
-        verdict: aiComparison.seoVerdict,
-        plainVerdict: aiComparison.plainSeoVerdict,
+        return {
+          verdict: typeof found?.verdict === "string" ? found.verdict : "",
+          plainVerdict: typeof found?.plainVerdict === "string" ? found.plainVerdict : "",
+        };
       };
 
+      // Scores and winners come from code; only the prose comes from the model, so a
+      // missing verdict costs a sentence rather than the whole comparison.
+      const categories: ComparisonCategory[] = [
+        {
+          category: "Design",
+          yourScore: yours.designScore,
+          competitorScore: competitor.designScore,
+          winner: winnerOf(yours.designScore, competitor.designScore),
+          ...verdictFor("Design"),
+        },
+        {
+          category: "Trust",
+          yourScore: yours.trustScore,
+          competitorScore: competitor.trustScore,
+          winner: winnerOf(yours.trustScore, competitor.trustScore),
+          ...verdictFor("Trust"),
+        },
+        {
+          category: "UX",
+          yourScore: yours.uxScore,
+          competitorScore: competitor.uxScore,
+          winner: winnerOf(yours.uxScore, competitor.uxScore),
+          ...verdictFor("UX"),
+        },
+        {
+          category: "SEO",
+          yourScore: yours.seoChecks.seoScore,
+          competitorScore: competitor.seoChecks.seoScore,
+          winner: winnerOf(yours.seoChecks.seoScore, competitor.seoChecks.seoScore),
+          verdict: typeof narrative.seoVerdict === "string" ? narrative.seoVerdict : "",
+          plainVerdict:
+            typeof narrative.plainSeoVerdict === "string" ? narrative.plainSeoVerdict : "",
+        },
+      ];
+
+      // 2 points on the 0-100 scale, matching the previous behaviour.
       const overallWinner: ComparisonWinner =
-        Math.abs(yourOverallScore - competitorOverallScore) <= 2
+        Math.abs(yours.overallScore - competitor.overallScore) <= 2
           ? "tie"
-          : yourOverallScore > competitorOverallScore
+          : yours.overallScore > competitor.overallScore
           ? "yours"
           : "competitor";
 
       const comparison: ComparisonReport = {
-        yours: { ...aiComparison.yours, overallScore: yourOverallScore },
-        competitor: { ...aiComparison.competitor, overallScore: competitorOverallScore },
-        categories: [...aiComparison.categories, seoCategory],
-        yourSeoChecks,
-        competitorSeoChecks,
+        yours: {
+          url: yourUrl,
+          overallScore: yours.overallScore,
+          firstImpression: yours.firstImpression,
+          plainFirstImpression: yours.plainFirstImpression,
+          strengths: highlights(yours.assessments, "yes", "technical"),
+          plainStrengths: highlights(yours.assessments, "yes", "plain"),
+          weaknesses: highlights(yours.assessments, "no", "technical"),
+          plainWeaknesses: highlights(yours.assessments, "no", "plain"),
+        },
+        competitor: {
+          url: competitorUrl,
+          overallScore: competitor.overallScore,
+          firstImpression: competitor.firstImpression,
+          plainFirstImpression: competitor.plainFirstImpression,
+          strengths: highlights(competitor.assessments, "yes", "technical"),
+          plainStrengths: highlights(competitor.assessments, "yes", "plain"),
+          weaknesses: highlights(competitor.assessments, "no", "technical"),
+          plainWeaknesses: highlights(competitor.assessments, "no", "plain"),
+        },
+        categories,
+        yourSeoChecks: yours.seoChecks,
+        competitorSeoChecks: competitor.seoChecks,
         overallWinner,
-        overallVerdict: aiComparison.overallVerdict,
-        plainOverallVerdict: aiComparison.plainOverallVerdict,
-        topRecommendations: aiComparison.topRecommendations,
-        plainTopRecommendations: aiComparison.plainTopRecommendations,
+        overallVerdict: typeof narrative.overallVerdict === "string" ? narrative.overallVerdict : "",
+        plainOverallVerdict:
+          typeof narrative.plainOverallVerdict === "string" ? narrative.plainOverallVerdict : "",
+        topRecommendations: Array.isArray(narrative.topRecommendations)
+          ? narrative.topRecommendations
+          : [],
+        plainTopRecommendations: Array.isArray(narrative.plainTopRecommendations)
+          ? narrative.plainTopRecommendations
+          : [],
         modelUsed,
       };
 
@@ -166,22 +312,22 @@ export async function POST(request: NextRequest) {
         modelUsed,
         modelFellBack: modelUsed !== "gemini-flash-latest",
         yours: {
-          dataSource: yourSite.extractedData.dataSource,
-          isVerified: yourSite.extractedData.isVerified,
-          seoScore: yourSeoChecks.seoScore,
-          designScore: designCat.yourScore,
-          trustScore: trustCat.yourScore,
-          uxScore: uxCat.yourScore,
-          overallScore: yourOverallScore,
+          dataSource: yours.dataSource,
+          isVerified: yours.isVerified,
+          seoScore: yours.seoChecks.seoScore,
+          designScore: yours.designScore,
+          trustScore: yours.trustScore,
+          uxScore: yours.uxScore,
+          overallScore: yours.overallScore,
         },
         competitor: {
-          dataSource: competitorSite.extractedData.dataSource,
-          isVerified: competitorSite.extractedData.isVerified,
-          seoScore: competitorSeoChecks.seoScore,
-          designScore: designCat.competitorScore,
-          trustScore: trustCat.competitorScore,
-          uxScore: uxCat.competitorScore,
-          overallScore: competitorOverallScore,
+          dataSource: competitor.dataSource,
+          isVerified: competitor.isVerified,
+          seoScore: competitor.seoChecks.seoScore,
+          designScore: competitor.designScore,
+          trustScore: competitor.trustScore,
+          uxScore: competitor.uxScore,
+          overallScore: competitor.overallScore,
         },
         overallWinner,
         parseOk: true,

@@ -41,9 +41,10 @@ export function inspect(slug: string): void {
   console.log(`  dataSource     : ${f.extractedData.dataSource} (isVerified: ${f.extractedData.isVerified})`);
   console.log(`  title          : ${JSON.stringify(f.extractedData.title)} (${f.extractedData.titleLength} chars)`);
   console.log(`  metaDescription: ${JSON.stringify(f.extractedData.metaDescription)} (${f.extractedData.metaDescriptionLength} chars)`);
-  console.log(`  h1Tags         : ${JSON.stringify(f.extractedData.h1Tags)}`);
-  console.log(`  images         : ${f.extractedData.imagesWithoutAlt} of ${f.extractedData.totalImages} missing alt`);
-  console.log(`  viewport       : ${f.extractedData.viewportPresent} · canonical: ${f.extractedData.canonicalPresent}`);
+  console.log(`  noindex        : ${f.extractedData.isNoindex} (${f.extractedData.robotsDirectives ?? "no robots meta"})`);
+  console.log(`  openGraph      : title=${Boolean(f.extractedData.ogTitle)} desc=${Boolean(f.extractedData.ogDescription)} image=${Boolean(f.extractedData.ogImage)}`);
+  console.log(`  lang           : ${f.extractedData.langAttribute ?? "missing"} · favicon: ${f.extractedData.faviconPresent}`);
+  console.log(`  viewport       : ${f.extractedData.viewportPresent} (blocksZoom: ${f.extractedData.viewportBlocksZoom}) · canonical: ${f.extractedData.canonicalPresent}`);
   console.log(`  hasHttps       : ${f.extractedData.hasHttps}`);
   console.log(`  detectedStack  : ${f.extractedData.detectedStack}`);
   console.log(`  seoScore       : ${f.seoChecks.seoScore}/10\n`);

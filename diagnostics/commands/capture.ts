@@ -61,6 +61,7 @@ export async function capture(args: {
     extractedData: result.extractedData,
     seoChecks,
     markdown: result.markdown,
+    fullMarkdown: result.fullMarkdown,
     screenshotFile: result.screenshotBase64 ? `${slug}.png` : null,
     screenshotBytes: result.screenshotBase64
       ? Buffer.from(result.screenshotBase64, "base64").length
@@ -74,7 +75,10 @@ export async function capture(args: {
   console.log(`    dataSource : ${result.extractedData.dataSource}`);
   console.log(`    isVerified : ${result.extractedData.isVerified}`);
   console.log(`    seoScore   : ${seoChecks.seoScore}/10`);
-  console.log(`    markdown   : ${result.markdown ? `${result.markdown.length} chars` : "none"}`);
+  console.log(
+    `    markdown   : ${result.markdown ? `${result.markdown.length} chars` : "none"}` +
+      `${result.fullMarkdown && result.fullMarkdown.length !== (result.markdown?.length ?? 0) ? ` (capped from ${result.fullMarkdown.length})` : ""}`
+  );
   console.log(`    timings    : total ${result.timings.totalMs}ms, scraper ${result.timings.scraperMs ?? "-"}ms`);
   if (fixture.screenshotFile) {
     console.log(`    screenshot : ${screenshotPath(slug)} (${fixture.screenshotBytes} bytes)`);

@@ -1,16 +1,45 @@
-import { CRITERIA_BY_CATEGORY, CriterionDef } from "./criteria";
+import { AssessedCategory, CriterionDef, aiCriteria } from "./criteria";
 import { ExtractedSiteData } from "./siteData";
 import { GeminiPart, SeoChecks } from "./types";
 
+/** Tells the model which input answers each question, so it looks in the right place. */
+const SOURCE_HINT: Record<string, string> = {
+  screenshot: "screenshot",
+  markdown: "page text",
+  both: "screenshot + page text",
+};
+
+/**
+ * One category's questions, grouped by sub-group. Only AI-tier criteria appear — the
+ * code tier is answered by contentChecks.ts and must never be asked about, or the model
+ * would be invited to contradict a deterministic result.
+ */
 function criteriaBlock(label: string, criteria: CriterionDef[]): string {
-  return `${label}:\n${criteria.map((c) => `  - ${c.id}: ${c.question}`).join("\n")}`;
+  const bySubgroup = new Map<string, CriterionDef[]>();
+  for (const c of criteria) {
+    const list = bySubgroup.get(c.subgroup) ?? [];
+    list.push(c);
+    bySubgroup.set(c.subgroup, list);
+  }
+
+  const body = [...bySubgroup.entries()]
+    .map(
+      ([subgroup, defs]) =>
+        `  ${subgroup}\n` +
+        defs
+          .map((c) => `    - ${c.id} [${SOURCE_HINT[c.source] ?? c.source}]: ${c.question}`)
+          .join("\n")
+    )
+    .join("\n");
+
+  return `${label}:\n${body}`;
 }
 
 function criteriaSchema(criteria: CriterionDef[]): string {
   return criteria
     .map(
       (c) =>
-        `      "${c.id}": {"rating": "good|adequate|poor", "evidence": "<max 12 words citing what you actually see>"}`
+        `      "${c.id}": {"rating": "yes|no|unclear", "evidence": "<max 8 words naming what you actually saw>"}`
     )
     .join(",\n");
 }
@@ -19,22 +48,32 @@ function criteriaSchema(criteria: CriterionDef[]): string {
 function rubricSection(): string {
   return `SCORING RUBRIC — read carefully.
 
-Do NOT output any numeric scores. Instead, rate each criterion below as exactly one of "good", "adequate", or "poor", and give the specific evidence you based it on. The numeric scores are calculated from your ratings by code.
+Do NOT output any numeric scores. Answer each question below with exactly one of "yes", "no", or "unclear", plus the specific evidence you based it on. Code calculates the numeric scores from your answers.
 
-Rate ONLY what you can actually observe in the screenshot and the data provided. You cannot click, scroll, hover, or navigate — so judge only what is visible. If something genuinely cannot be determined from what you were given, rate it "adequate" and say so in the evidence rather than guessing.
+Every question is a factual yes/no about THIS page. They are not requests for a quality grade — do not rate things as "good" or "average", just answer the question that was asked.
 
-Use this scale consistently:
-  - "good"     = clearly done well; a professional would not flag it
-  - "adequate" = present but unremarkable, or partially done
-  - "poor"     = missing, broken, or actively working against the visitor
+  - "yes"     = you can point to the specific thing in the screenshot or page text
+  - "no"      = you looked and it is not there, or it is there but fails the condition asked
+  - "unclear" = the question genuinely cannot be settled from a static screenshot and page text
 
-Write the evidence BEFORE deciding the rating: name the specific thing you see, then rate it. Evidence must describe this particular page, not generic advice.
+CRITICAL — absence of evidence is "no", not "yes". If you cannot find the thing being asked about, the answer is "no". Do not answer "yes" because a page seems generally well made, and do not answer "yes" to be agreeable. A wrong "yes" is far more damaging to this report than a wrong "no".
 
-${criteriaBlock("DESIGN — visual craft", CRITERIA_BY_CATEGORY.design)}
+Use "unclear" sparingly and only where the input genuinely cannot answer it — for example, anything requiring hover, click, scroll or a second page. "unclear" answers are excluded from scoring entirely, so they neither help nor hurt the site. Never use "unclear" merely because a judgment is hard.
 
-${criteriaBlock("TRUST — credibility signals", CRITERIA_BY_CATEGORY.trust)}
+Write the evidence BEFORE deciding the answer: name the specific thing you see, then answer. Evidence must describe this particular page, never generic advice.
 
-${criteriaBlock("UX — usability, as far as a static screenshot can show", CRITERIA_BY_CATEGORY.ux)}`;
+The tag in [brackets] after each id tells you which input answers that question.
+
+${criteriaBlock("DESIGN — visual craft, judged from the screenshot", aiCriteria("design"))}
+
+${criteriaBlock("TRUST — credibility signals", aiCriteria("trust"))}
+
+${criteriaBlock("UX — usability, as far as a static screenshot and page text can show", aiCriteria("ux"))}`;
+}
+
+/** The JSON shape for one category — AI-tier criteria only. */
+function categorySchema(category: AssessedCategory): string {
+  return criteriaSchema(aiCriteria(category));
 }
 
 // Prompt construction lives here (not inline in the route handlers) so that the
@@ -85,26 +124,32 @@ export function buildRoastPrompt({
     markdown ? `\n\n${pageContentSection(markdown)}` : ""
   }
 
-Website data:
-- Title: ${extractedData.title ?? "No title found"}
-- Meta Description: ${extractedData.metaDescription ?? "No meta description found"}
-- H1 Headings: ${extractedData.h1Tags.join(", ") || "None found"}
-- Total Images: ${extractedData.totalImages}
-- Images Missing Alt Text: ${extractedData.imagesWithoutAlt}
-- Uses HTTPS: ${extractedData.hasHttps}
-- Detected Tech Stack: ${extractedData.detectedStack}
-
-Pre-verified SEO facts (already computed by code — treat as ground truth, do NOT recompute or restate differently):
+Pre-verified page metadata (read from the page's HTML head by code — treat as ground truth, do NOT recompute or restate differently):
+- Title: ${extractedData.title ?? "No title found"} (${extractedData.titleLength} characters${extractedData.titleIsGeneric ? ", a framework/CMS default" : ""})
+- Meta description: ${extractedData.metaDescription ?? "missing"}${extractedData.metaDescription ? ` (${extractedData.metaDescriptionLength} characters)` : ""}
 - HTTPS: ${extractedData.hasHttps}
-- Meta description: ${extractedData.metaDescription ? "present" : "missing"}, ${extractedData.metaDescriptionLength} characters
-- Title length: ${extractedData.titleLength} characters
-- H1 tags found: ${extractedData.h1Count}
-- Viewport tag: ${extractedData.viewportPresent ? "present" : "missing"}
+- Indexable by search engines: ${extractedData.isNoindex ? `NO — page carries a noindex directive ("${extractedData.robotsDirectives}")` : "yes"}
+- Viewport tag: ${extractedData.viewportPresent ? "present" : "missing"}${extractedData.viewportBlocksZoom ? ", and it blocks pinch-zoom" : ""}
 - Canonical tag: ${extractedData.canonicalPresent ? "present" : "missing"}
-- Images missing alt text: ${extractedData.imagesWithoutAlt} of ${extractedData.totalImages}
-- Computed technical SEO score (already final — do not output your own seoScore or overallScore): ${seoChecks.seoScore}/10
+- Favicon: ${extractedData.faviconPresent ? "present" : "missing"}
+- Open Graph (link sharing preview): title ${extractedData.ogTitle ? "present" : "missing"}, description ${extractedData.ogDescription ? "present" : "missing"}, image ${extractedData.ogImage ? "present" : "missing"}
+- Page language declared: ${extractedData.langAttribute ?? "missing"}
+- Detected tech stack: ${extractedData.detectedStack}
+- Computed technical score (already final — do not output your own seoScore or overallScore): ${seoChecks.seoScore}/10
 
-IMPORTANT: The SEO facts above are already verified by code. Do NOT invent your own counts, percentages, or scores for anything listed above. If your prose (firstImpression, biggestProblems, quickWins, suggestions) references any of these specific facts, you must reuse the exact figures given verbatim — do not recalculate, round differently, or estimate your own numbers for these items. Do not comment on SEO technical facts already listed above (meta description, H1 count, alt text, viewport, canonical, title length) in biggestProblems/quickWins/suggestions — a separate Technical SEO Checks section already covers those verbatim. Focus your problems/wins/suggestions on Design, Trust, UX, and genuinely subjective/strategic issues instead.
+HOW TO USE THE METADATA ABOVE. It is settled fact, established by code that parsed the page's HTML. Your job with it is to EXPLAIN it, not to check it. You are never verifying whether these things exist, and never deriving a number of your own — that work is already done and is correct.
+
+So:
+  - Do NOT re-examine, second-guess or contradict any fact above, even if the screenshot seems to suggest otherwise. The code read the markup; you are looking at a picture.
+  - Do NOT invent counts, percentages or scores for anything listed above. Where your prose refers to one of these facts, reuse the exact figure given, verbatim.
+  - DO write the serious ones up for the reader in biggestProblems and quickWins, in language a small business owner would understand. "This page tells Google not to list it in search results" beats "noindex directive present". A missing padlock, a page hidden from search, or a site that breaks on phones belongs in biggestProblems — those are among the most damaging things a website can have, and leaving them out because they came from code would hide the worst news in the report.
+  - Judge severity yourself: surface a metadata fact only when it genuinely matters to this site. A missing canonical tag on a one-page brochure site is not a "biggest problem"; a noindex directive always is. Do not pad the lists with minor tags just because they appear above.
+
+Everything else you write — Design, Trust, UX, the first impression, the roast tone — is YOUR judgment, made from the screenshot and the page text alone.
+
+Because those are your only two inputs, do NOT report counts or measurements you cannot actually verify. You have a picture and the page's words, not its markup — so you cannot count images, alt attributes, links, form fields, headings, or file sizes. Never state such a number. Describe what you can genuinely see instead ("the product photos in the middle section look inconsistently cropped").
+
+You MAY also use the metadata as evidence when rating the criteria below where it is genuinely relevant — an absent link-sharing preview is legitimate Trust evidence, for instance.
 
 ${rubricSection()}
 
@@ -117,13 +162,13 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
   "firstImpression": "<technical: 2-3 sentences on what a visitor feels in the first 5 seconds>",
   "plainFirstImpression": "<same idea, plain English, no jargon>",
   "design": {
-${criteriaSchema(CRITERIA_BY_CATEGORY.design)}
+${categorySchema("design")}
   },
   "trust": {
-${criteriaSchema(CRITERIA_BY_CATEGORY.trust)}
+${categorySchema("trust")}
   },
   "ux": {
-${criteriaSchema(CRITERIA_BY_CATEGORY.ux)}
+${categorySchema("ux")}
   },
   "biggestProblems": [
     {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
@@ -176,142 +221,81 @@ export function buildRoastParts({
   return parts;
 }
 
+/** One site's finished, code-computed assessment, as handed to the comparison writer. */
+export interface ComparisonSide {
+  url: string;
+  designScore: number;
+  trustScore: number;
+  uxScore: number;
+  seoScore: number;
+  overallScore: number;
+  firstImpression: string;
+  /** Criterion labels this site met / failed, already resolved from the rubric. */
+  met: string[];
+  failed: string[];
+}
+
+function sideBlock(label: string, side: ComparisonSide): string {
+  return `${label} — ${side.url}
+  Scores (final, computed by code): Design ${side.designScore}/10 · Trust ${side.trustScore}/10 · UX ${side.uxScore}/10 · Technical ${side.seoScore}/10 · Overall ${side.overallScore}/100
+  First impression: ${side.firstImpression}
+  Criteria MET (${side.met.length}): ${side.met.join("; ") || "none"}
+  Criteria FAILED (${side.failed.length}): ${side.failed.join("; ") || "none"}`;
+}
+
 export interface ComparePromptInput {
-  yourUrl: string;
-  competitorUrl: string;
-  yourData: ExtractedSiteData;
-  competitorData: ExtractedSiteData;
-  yourSeoChecks: SeoChecks;
-  competitorSeoChecks: SeoChecks;
-  hasAnyScreenshot: boolean;
+  yours: ComparisonSide;
+  competitor: ComparisonSide;
 }
 
-export function buildComparePrompt({
-  yourUrl,
-  competitorUrl,
-  yourData,
-  competitorData,
-  yourSeoChecks,
-  competitorSeoChecks,
-  hasAnyScreenshot,
-}: ComparePromptInput): string {
-  return `You are a brutally honest but helpful website reviewer. Compare these two websites head-to-head and return a JSON comparison report.
+/**
+ * The head-to-head write-up.
+ *
+ * Both sites have already been assessed against the same 60-criterion rubric and scored
+ * by the same code path as a single-site report, so this call receives finished numbers
+ * and produces only prose. The previous version asked the model for `"yourScore": <0-10>`
+ * directly, which is exactly the freehand-number pattern the rubric exists to remove —
+ * it left the comparison page as the one place in the product where a score could be
+ * invented, and where the same two sites could trade places between runs.
+ */
+export function buildComparePrompt({ yours, competitor }: ComparePromptInput): string {
+  return `You are a brutally honest but helpful website reviewer, writing a head-to-head comparison of two sites.
 
-Site A — "Your Site" (${yourUrl}):
-- Title: ${yourData.title ?? "No title found"}
-- Meta Description: ${yourData.metaDescription ?? "No meta description found"}
-- H1 Headings: ${yourData.h1Tags.join(", ") || "None found"}
-- Total Images: ${yourData.totalImages}
-- Images Missing Alt Text: ${yourData.imagesWithoutAlt}
-- Uses HTTPS: ${yourData.hasHttps}
+${sideBlock("SITE A (\"your site\")", yours)}
 
-Pre-verified SEO facts for Site A (already computed by code — treat as ground truth, do not recompute):
-- Viewport tag: ${yourData.viewportPresent ? "present" : "missing"}
-- Canonical tag: ${yourData.canonicalPresent ? "present" : "missing"}
-- Title length: ${yourData.titleLength} characters
-- Computed technical SEO score: ${yourSeoChecks.seoScore}/10
+${sideBlock("SITE B (\"the competitor\")", competitor)}
 
-Site B — "Competitor Site" (${competitorUrl}):
-- Title: ${competitorData.title ?? "No title found"}
-- Meta Description: ${competitorData.metaDescription ?? "No meta description found"}
-- H1 Headings: ${competitorData.h1Tags.join(", ") || "None found"}
-- Total Images: ${competitorData.totalImages}
-- Images Missing Alt Text: ${competitorData.imagesWithoutAlt}
-- Uses HTTPS: ${competitorData.hasHttps}
+THE SCORES ABOVE ARE FINAL. Both sites were assessed against the same fixed checklist and scored by code. Do not re-score them, do not dispute them, and do not output any numbers of your own — not even a total. Your entire job is to explain, in plain language, WHY the gap exists and what to do about it, using the met/failed criteria above as your evidence.
 
-Pre-verified SEO facts for Site B (already computed by code — treat as ground truth, do not recompute):
-- Viewport tag: ${competitorData.viewportPresent ? "present" : "missing"}
-- Canonical tag: ${competitorData.canonicalPresent ? "present" : "missing"}
-- Title length: ${competitorData.titleLength} characters
-- Computed technical SEO score: ${competitorSeoChecks.seoScore}/10
+Where the two sites differ on a category, the explanation must point at specific criteria from the lists above. "Site B wins on Trust because it shows named customer reviews and a physical address, both of which Site A is missing" is the right shape. Vague statements like "Site B feels more professional" are not.
 
-${
-  hasAnyScreenshot
-    ? "Screenshots for both sites are attached (in the order: Your Site, then Competitor Site, for whichever are available)."
-    : ""
-}
+Where a category is close, say so plainly rather than manufacturing a difference.
 
-IMPORTANT: The SEO facts above for both sites are already verified by code. Do NOT invent your own counts, percentages, or SEO scores — a separate Technical SEO Checks section already covers those exactly. Do not include an "SEO" category yourself (it's added afterward from the code-verified scores above); focus your categories, strengths, and weaknesses on Design, Trust, and UX.
+Do NOT report counts or measurements beyond the criteria listed above — you have no other information about either page.
 
-For every text field below, provide TWO versions: a "technical" version (fine to use terms like UX, SEO, CTA, alt text) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, same problems, just plain words). Keep plain arrays the same length and order as their technical counterparts.
-
-Judge each category on its own merits — do not default to always favoring Site A. "winner" must be "yours", "competitor", or "tie".
-
-For "seoVerdict"/"plainSeoVerdict", write 1-2 sentences comparing the two sites' technical SEO using ONLY the computed SEO scores given above (${yourSeoChecks.seoScore}/10 vs ${competitorSeoChecks.seoScore}/10) — do not cite any other SEO numbers.
+For every text field, provide TWO versions: a "technical" version (terms like UX, CTA, alt text are fine) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
 
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
-  "yours": {
-    "url": "${yourUrl}",
-    "firstImpression": "<2-3 sentences>",
-    "plainFirstImpression": "<same, plain English>",
-    "strengths": ["<technical strength>"],
-    "plainStrengths": ["<same items, same order, plain English>"],
-    "weaknesses": ["<technical weakness>"],
-    "plainWeaknesses": ["<same items, same order, plain English>"]
-  },
-  "competitor": {
-    "url": "${competitorUrl}",
-    "firstImpression": "<2-3 sentences>",
-    "plainFirstImpression": "<same, plain English>",
-    "strengths": ["<technical strength>"],
-    "plainStrengths": ["<same items, same order, plain English>"],
-    "weaknesses": ["<technical weakness>"],
-    "plainWeaknesses": ["<same items, same order, plain English>"]
-  },
   "categories": [
-    {"category": "Design", "yourScore": <0-10>, "competitorScore": <0-10>, "winner": "yours|competitor|tie", "verdict": "<technical, 1-2 sentences>", "plainVerdict": "<same, plain English>"},
-    {"category": "Trust", "yourScore": <0-10>, "competitorScore": <0-10>, "winner": "yours|competitor|tie", "verdict": "<technical>", "plainVerdict": "<plain English>"},
-    {"category": "UX", "yourScore": <0-10>, "competitorScore": <0-10>, "winner": "yours|competitor|tie", "verdict": "<technical>", "plainVerdict": "<plain English>"}
+    {"category": "Design", "verdict": "<technical, 1-2 sentences citing specific criteria>", "plainVerdict": "<same, plain English>"},
+    {"category": "Trust", "verdict": "<technical>", "plainVerdict": "<plain English>"},
+    {"category": "UX", "verdict": "<technical>", "plainVerdict": "<plain English>"}
   ],
-  "seoVerdict": "<technical, 1-2 sentences comparing the two SEO scores given above>",
+  "seoVerdict": "<technical, 1-2 sentences on the technical/discoverability gap>",
   "plainSeoVerdict": "<same, plain English>",
-  "overallVerdict": "<technical, 2-3 sentences on who wins overall and why>",
+  "overallVerdict": "<technical, 2-3 sentences on who is ahead and why>",
   "plainOverallVerdict": "<same, plain English>",
-  "topRecommendations": ["<specific actionable step for 'yours' to beat the competitor>"],
-  "plainTopRecommendations": ["<same items, same order, plain English>"]
+  "topRecommendations": ["<the highest-value change site A should make>", "<second>", "<third>"],
+  "plainTopRecommendations": ["<same, plain English>", "<second>", "<third>"]
 }`;
 }
 
-export function buildCompareParts({
-  yourUrl,
-  competitorUrl,
-  yourData,
-  competitorData,
-  yourSeoChecks,
-  competitorSeoChecks,
-  yourScreenshotBase64,
-  competitorScreenshotBase64,
-}: {
-  yourUrl: string;
-  competitorUrl: string;
-  yourData: ExtractedSiteData;
-  competitorData: ExtractedSiteData;
-  yourSeoChecks: SeoChecks;
-  competitorSeoChecks: SeoChecks;
-  yourScreenshotBase64: string | null;
-  competitorScreenshotBase64: string | null;
-}): GeminiPart[] {
-  const parts: GeminiPart[] = [
-    {
-      text: buildComparePrompt({
-        yourUrl,
-        competitorUrl,
-        yourData,
-        competitorData,
-        yourSeoChecks,
-        competitorSeoChecks,
-        hasAnyScreenshot: Boolean(yourScreenshotBase64 || competitorScreenshotBase64),
-      }),
-    },
-  ];
-
-  if (yourScreenshotBase64) {
-    parts.push({ inline_data: { mime_type: "image/png", data: yourScreenshotBase64 } });
-  }
-  if (competitorScreenshotBase64) {
-    parts.push({ inline_data: { mime_type: "image/png", data: competitorScreenshotBase64 } });
-  }
-
-  return parts;
+/**
+ * Text only — no screenshots. Both sites were already looked at during their individual
+ * assessments; re-sending two full-page captures here would cost a large multiple of the
+ * tokens to produce prose that is written from the criteria, not the pixels.
+ */
+export function buildCompareParts(input: ComparePromptInput): GeminiPart[] {
+  return [{ text: buildComparePrompt(input) }];
 }

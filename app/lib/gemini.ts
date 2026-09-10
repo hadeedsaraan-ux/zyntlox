@@ -30,10 +30,19 @@ export interface GeminiCallOptions {
    */
   models?: readonly GeminiModel[];
   /**
-   * When set, sent as generationConfig.temperature. When undefined, NO generationConfig
-   * key is emitted at all — the request body stays byte-identical to today's.
+   * When set, sent as generationConfig.temperature. When undefined, no temperature key
+   * is emitted and the server's own default applies.
    */
   temperature?: number;
+  /**
+   * Ask the API to guarantee syntactically valid JSON. Worth doing now that a response
+   * carries ~45 criterion objects: the odds of a stray backtick or an unterminated string
+   * scale with response length, and a parse failure costs the entire report.
+   *
+   * This does NOT validate our schema — only that the bytes parse. Missing or misnamed
+   * criterion keys are still handled downstream by parseAssessments.
+   */
+  jsonMode?: boolean;
 }
 
 export interface GeminiCallResult {
@@ -71,17 +80,23 @@ export async function callGeminiWithRetry(
       attempts++;
       onStage?.({ id: "gemini", label: "Analyzing with Gemini…" });
       try {
-        // Conditional KEY, not conditional value: omitting generationConfig means
-        // "whatever the server defaults to", which is what production sends today.
-        // Sending an explicit temperature: 1.0 instead would pin a value nobody chose
-        // and destroy the baseline the diagnostics are measuring against.
+        // Conditional KEYS, not conditional values: an absent key means "whatever the
+        // server defaults to". Sending an explicit temperature: 1.0 instead would pin a
+        // value nobody chose and destroy the baseline the diagnostics measure against.
         const body: {
           contents: [{ parts: GeminiPart[] }];
-          generationConfig?: { temperature: number };
+          generationConfig?: { temperature?: number; responseMimeType?: string };
         } = { contents: [{ parts }] };
 
+        const generationConfig: { temperature?: number; responseMimeType?: string } = {};
         if (options?.temperature !== undefined) {
-          body.generationConfig = { temperature: options.temperature };
+          generationConfig.temperature = options.temperature;
+        }
+        if (options?.jsonMode) {
+          generationConfig.responseMimeType = "application/json";
+        }
+        if (Object.keys(generationConfig).length > 0) {
+          body.generationConfig = generationConfig;
         }
 
         const geminiResponse = await fetch(
