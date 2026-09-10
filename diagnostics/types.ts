@@ -19,8 +19,15 @@ export interface Fixture {
   extractedData: ExtractedSiteData;
   seoChecks: SeoChecks;
   /** Page text sent alongside the screenshot — must be frozen too, or replay would
-   *  exercise a different prompt than production sends. */
+   *  exercise a different prompt than production sends. Capped, as the prompt caps it. */
   markdown: string | null;
+  /**
+   * The UNCAPPED page text, which is what the deterministic content checks run against
+   * in production. Freezing only the capped copy would make replay evaluate the footer
+   * criteria — privacy, terms, contact, copyright — against text those links fall off
+   * the end of, so the harness would disagree with production on any long page.
+   */
+  fullMarkdown: string | null;
   screenshotFile: string | null;
   screenshotBytes: number | null;
   /** sha256 of the built prompt at capture time — the drift tripwire for replay. */

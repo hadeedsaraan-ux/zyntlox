@@ -52,23 +52,73 @@ export const LABELS: Record<
 export const SEO_CHECK_LABELS: Record<ReportMode, Record<SeoCheck["id"], string>> = {
   technical: {
     https: "HTTPS",
+    noindex: "Indexability",
     metaDescription: "Meta Description",
     title: "Title Tag",
-    h1: "H1 Heading",
     viewport: "Viewport Tag",
+    zoomBlocked: "Pinch-to-Zoom",
     canonical: "Canonical Tag",
-    altText: "Image Alt Text",
+    socialPreview: "Open Graph Tags",
+    favicon: "Favicon",
+    langAttribute: "Lang Attribute",
   },
   plain: {
     https: "Secure Connection",
+    noindex: "Visible on Google",
     metaDescription: "Search Result Snippet",
     title: "Page Title",
-    h1: "Main Heading",
     viewport: "Mobile-Friendly Tag",
+    zoomBlocked: "Zooming on Phones",
     canonical: "Duplicate-Page Marker",
-    altText: "Picture Descriptions",
+    socialPreview: "Link Sharing Preview",
+    favicon: "Browser Tab Icon",
+    langAttribute: "Page Language",
   },
 };
+
+export type SeoCheckGroup = "discoverability" | "sharing" | "device";
+
+/** Which section of the checklist each check is rendered under. */
+export const SEO_CHECK_GROUP: Record<SeoCheck["id"], SeoCheckGroup> = {
+  noindex: "discoverability",
+  title: "discoverability",
+  metaDescription: "discoverability",
+  canonical: "discoverability",
+  socialPreview: "sharing",
+  favicon: "sharing",
+  https: "device",
+  viewport: "device",
+  zoomBlocked: "device",
+  langAttribute: "device",
+};
+
+export const SEO_GROUP_ORDER: SeoCheckGroup[] = ["discoverability", "sharing", "device"];
+
+export const SEO_GROUP_LABELS: Record<ReportMode, Record<SeoCheckGroup, string>> = {
+  technical: {
+    discoverability: "Search & Discoverability",
+    sharing: "Sharing & Branding",
+    device: "Mobile, Security & Accessibility",
+  },
+  plain: {
+    discoverability: "Getting Found Online",
+    sharing: "How Your Links Look",
+    device: "Phones, Safety & Access",
+  },
+};
+
+/**
+ * Groups checks for display while preserving the audit's own ordering within each
+ * group. Shared by the web report and the PDF so the two can't drift apart.
+ */
+export function groupSeoChecks(
+  checks: SeoCheck[]
+): Array<{ group: SeoCheckGroup; checks: SeoCheck[] }> {
+  return SEO_GROUP_ORDER.map((group) => ({
+    group,
+    checks: checks.filter((check) => SEO_CHECK_GROUP[check.id] === group),
+  })).filter((section) => section.checks.length > 0);
+}
 
 export function formatSeoCheckDetail(check: SeoCheck, mode: ReportMode): string {
   const plain = mode === "plain";
@@ -93,33 +143,18 @@ export function formatSeoCheckDetail(check: SeoCheck, mode: ReportMode): string 
         ? `Search result snippet is present (${check.values.length} characters).`
         : `Meta description is present (${check.values.length} characters).`;
 
-    case "title":
+    case "title": {
       if (!check.values.present) {
         return plain ? "No page title was found." : "No title tag was found.";
+      }
+      if (check.values.generic) {
+        return plain
+          ? `The page title is still the default "${check.values.title}" — it tells visitors and Google nothing about your business.`
+          : `Title tag is a framework/CMS default ("${check.values.title}") — it carries no keywords or brand.`;
       }
       return plain
         ? `Page title is present (${check.values.length} characters).`
         : `Title tag is present (${check.values.length} characters).`;
-
-    case "h1": {
-      const count = check.values.count as number;
-      const elementCount = (check.values.elementCount as number) ?? count;
-      if (count === 0) {
-        // An H1 that exists but holds only an image is a different (and differently
-        // fixable) problem from having no H1 at all — saying "none found" would be false.
-        if (elementCount > 0) {
-          return plain
-            ? `The page's main heading contains only an image, so search engines see no heading text.`
-            : `${elementCount} H1 tag${elementCount > 1 ? "s" : ""} found, but with no text content (likely wrapping an image).`;
-        }
-        return plain ? "No main heading was found on the page." : "No H1 heading found.";
-      }
-      if (count > 1) {
-        return plain
-          ? `${count} main headings were found — usually there should only be one.`
-          : `${count} H1 tags found — typically a page should have exactly one.`;
-      }
-      return plain ? "One main heading found — as expected." : "Exactly one H1 tag found.";
     }
 
     case "viewport":
@@ -140,25 +175,75 @@ export function formatSeoCheckDetail(check: SeoCheck, mode: ReportMode): string 
         ? "This page doesn't mark itself as the main version, which can confuse search engines."
         : "Canonical tag is missing.";
 
-    case "altText": {
-      const { totalImages, imagesWithoutAlt } = check.values as {
-        totalImages: number;
-        imagesWithAlt: number;
-        imagesWithoutAlt: number;
-      };
-      if (totalImages === 0) {
-        return plain ? "No pictures found on this page." : "No images found on this page.";
-      }
-      if (imagesWithoutAlt === 0) {
+    case "noindex":
+      if (!check.values.isNoindex) {
         return plain
-          ? `All ${totalImages} pictures have descriptions for screen readers.`
-          : `All ${totalImages} images have alt text.`;
+          ? "Nothing on this page is telling Google to hide it from search results."
+          : "No noindex directive found — the page is crawlable.";
       }
       return plain
-        ? `${imagesWithoutAlt} out of ${totalImages} pictures don't have descriptions for people using screen readers.`
-        : `${imagesWithoutAlt} of ${totalImages} images are missing alt text.`;
+        ? "This page tells Google not to show it in search results at all. If that wasn't deliberate, it's the single most damaging thing on this list."
+        : `Page carries a noindex directive ("${check.values.directives}") — it is excluded from search results entirely.`;
+
+    case "socialPreview": {
+      const { hasTitle, hasDescription, hasImage } = check.values as {
+        hasTitle: boolean;
+        hasDescription: boolean;
+        hasImage: boolean;
+      };
+      if (hasTitle && hasDescription && hasImage) {
+        return plain
+          ? "Sharing a link to this page shows a proper preview with a picture."
+          : "Open Graph title, description and image are all present.";
+      }
+      if (!hasTitle && !hasDescription && !hasImage) {
+        return plain
+          ? "No sharing preview is set up — links to this page will look bare on social media and in messages."
+          : "No Open Graph tags found — shared links render without a preview card.";
+      }
+      const missing = [
+        !hasTitle ? (plain ? "a title" : "og:title") : null,
+        !hasDescription ? (plain ? "a description" : "og:description") : null,
+        !hasImage ? (plain ? "a picture" : "og:image") : null,
+      ].filter(Boolean);
+      return plain
+        ? `The sharing preview is missing ${missing.join(" and ")}, so shared links will look half-finished.`
+        : `Open Graph tags are incomplete — missing ${missing.join(", ")}.`;
     }
-  }
+
+    case "favicon":
+      return check.values.present
+        ? plain
+          ? "This page has an icon for the browser tab."
+          : "A favicon link tag is present."
+        : plain
+        ? "No browser-tab icon is set, so this page shows a blank placeholder in tabs and bookmarks."
+        : "No favicon link tag found — browsers fall back to a default icon.";
+
+    case "zoomBlocked":
+      if (!check.values.applicable) {
+        return plain
+          ? "No mobile settings were found to check for zoom blocking."
+          : "No viewport tag present, so zoom settings could not be evaluated.";
+      }
+      return check.values.blocked
+        ? plain
+          ? "This page stops people from pinching to zoom in on their phone — a real problem for anyone with less-than-perfect eyesight."
+          : `Viewport blocks pinch-zoom ("${check.values.viewport}") — a WCAG 1.4.4 failure.`
+        : plain
+        ? "Visitors can pinch to zoom in on their phone."
+        : "Viewport permits pinch-zoom.";
+
+    case "langAttribute":
+      return check.values.present
+        ? plain
+          ? `The page declares its language (${check.values.lang}), which helps screen readers read it correctly.`
+          : `<html lang="${check.values.lang}"> is set.`
+        : plain
+        ? "The page doesn't say what language it's in, so screen readers may read it with the wrong accent or pronunciation."
+        : "The <html> element has no lang attribute.";
+
+      }
 }
 
 export const IMPACT_LABELS: Record<

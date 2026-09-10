@@ -37,15 +37,27 @@ export type GeminiPart =
 
 export type CheckStatus = "pass" | "warn" | "fail";
 
+/**
+ * Every check is derived from `<head>` metadata (plus the URL's scheme and `<html lang>`).
+ *
+ * Body-DOM checks — alt-text counts, H1 counts, link names, form labels, mixed content —
+ * were deliberately removed. They required crawling the whole document, and on the
+ * raw-fetch path (unrendered HTML) an SPA's body is empty, so those counts were the least
+ * trustworthy numbers in the report. Head tags don't have that problem: they are
+ * server-rendered by necessity, since that's what crawlers and social-card scrapers read.
+ */
 export interface SeoCheck {
   id:
     | "https"
+    | "noindex"
     | "metaDescription"
     | "title"
-    | "h1"
     | "viewport"
+    | "zoomBlocked"
     | "canonical"
-    | "altText";
+    | "socialPreview"
+    | "favicon"
+    | "langAttribute";
   status: CheckStatus;
   pointsDeducted: number;
   // Raw facts only (numbers/booleans/strings) — prose is built at render time
@@ -64,25 +76,46 @@ export interface SeoFacts {
   hasHttps: boolean;
   title: string | null;
   titleLength: number;
+  /** Title left at a framework/CMS default ("Home", "Create Next App", "Untitled"). */
+  titleIsGeneric: boolean;
   metaDescription: string | null;
   metaDescriptionLength: number;
-  /** H1 elements that actually contain text. */
-  h1Count: number;
-  /**
-   * H1 elements present in the DOM, text-bearing or not. Distinguishes "no H1 at all"
-   * from "an H1 that holds only a logo image" — reporting the latter as "no H1 found"
-   * is a false claim.
-   */
-  h1ElementCount: number;
   viewportPresent: boolean;
   canonicalPresent: boolean;
-  totalImages: number;
-  imagesWithAlt: number;
-  imagesWithoutAlt: number;
   isVerified: boolean;
+
+  /**
+   * The combined `robots` + `googlebot` meta directives, verbatim. Note this cannot see
+   * an `X-Robots-Tag` HTTP header, so a page can be de-indexed in a way we can't detect —
+   * absence of noindex here is "no noindex in the HTML", not proof the page is indexable.
+   */
+  robotsDirectives: string | null;
+  /** The single most damaging finding available from markup: invisible to search. */
+  isNoindex: boolean;
+
+  /** Open Graph tags — what a link to this page looks like when shared. */
+  ogTitle: string | null;
+  ogDescription: string | null;
+  ogImage: string | null;
+
+  /** The viewport tag's raw content, so the report can quote what's actually set. */
+  viewportContent: string | null;
+  /** `user-scalable=no` / `maximum-scale=1` — blocks pinch-zoom, a WCAG failure. */
+  viewportBlocksZoom: boolean;
+
+  /** `<html lang>` — screen readers use it to pick a pronunciation. */
+  langAttribute: string | null;
+
+  faviconPresent: boolean;
 }
 
-export type CriterionRating = "good" | "adequate" | "poor";
+/**
+ * Binary, because the old good/adequate/poor scale was the dominant remaining variance
+ * source: "adequate" absorbed all uncertainty and the good/adequate line was pure taste.
+ * "unclear" is not a middle grade — it is excluded from scoring entirely (see
+ * computeCategoryScore), so hedging can neither help nor hurt a site's score.
+ */
+export type CriterionRating = "yes" | "no" | "unclear";
 
 export interface CriterionResult {
   id: string;
@@ -92,8 +125,9 @@ export interface CriterionResult {
 }
 
 /**
- * One subjective category. The model supplies `criteria` (observations); `score` is
- * computed from them in code, so it never invents a number.
+ * One subjective category. The model supplies ratings for the AI-tier criteria and
+ * contentChecks.ts supplies the code tier; `score` is computed from both in code, so no
+ * number is ever invented.
  */
 export interface CategoryAssessment {
   category: "design" | "trust" | "ux";

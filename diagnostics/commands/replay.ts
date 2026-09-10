@@ -7,7 +7,8 @@ import {
   scoreOf,
 } from "../../app/lib/scoring";
 import { CriterionRating, GeminiModel } from "../../app/lib/types";
-import { CRITERIA_BY_CATEGORY } from "../../app/lib/criteria";
+import { aiCriteria } from "../../app/lib/criteria";
+import { computeContentChecks } from "../../app/lib/contentChecks";
 import { requireGeminiKey, describeKeyPresence } from "../env";
 import { ageHours, loadFixture, loadScreenshotBase64, newResultPath, saveResultTo, sha256 } from "../fixtures";
 import { describe, fmt, signed, table } from "../stats";
@@ -55,7 +56,7 @@ function mockResponse(runIndex: number): GeminiApiResponse {
   if (runIndex === 2) {
     return { candidates: [{ content: { parts: [{ text: "{ this is not json" }] } }] };
   }
-  const RATINGS: CriterionRating[] = ["good", "adequate", "poor"];
+  const RATINGS: CriterionRating[] = ["yes", "no", "unclear"];
   const block = (defs: { id: string }[], offset: number) =>
     Object.fromEntries(
       defs.map((d, i) => [
@@ -73,9 +74,9 @@ function mockResponse(runIndex: number): GeminiApiResponse {
               text: JSON.stringify({
                 firstImpression: "Mock impression.",
                 plainFirstImpression: "Mock plain impression.",
-                design: block(CRITERIA_BY_CATEGORY.design, 0),
-                trust: block(CRITERIA_BY_CATEGORY.trust, 1),
-                ux: block(CRITERIA_BY_CATEGORY.ux, 2),
+                design: block(aiCriteria("design"), 0),
+                trust: block(aiCriteria("trust"), 1),
+                ux: block(aiCriteria("ux"), 2),
                 biggestProblems: [{ issue: "x", plainIssue: "x", impact: "High", effort: "Easy" }],
                 quickWins: [{ text: "y", plainText: "y", snippet: null }],
                 suggestions: [{ text: "z", plainText: "z", snippet: { language: "css", code: "a{}" } }],
@@ -122,6 +123,11 @@ export async function replay(args: {
     console.log(promptText);
     return;
   }
+
+  // The code tier is deterministic and the fixture is frozen, so this is computed once.
+  // Replay must apply it exactly as production does, or the scores it reports would be
+  // AI-tier-only and would not correspond to any number a user ever sees.
+  const contentChecks = computeContentChecks(fixture.fullMarkdown ?? fixture.markdown);
 
   const currentSha = sha256(promptText);
   const promptDrift = currentSha !== fixture.promptSha256;
@@ -225,6 +231,9 @@ export async function replay(args: {
           // the exact comparison being measured.
           const res = await callGeminiWithRetry(parts, undefined, {
             models: [cell.model],
+            // Must match production exactly, or the harness measures a configuration
+            // no user ever gets. The roast route sends jsonMode: true.
+            jsonMode: true,
             ...(cell.temperature !== null ? { temperature: cell.temperature } : {}),
           });
           data = res.data;
@@ -255,7 +264,7 @@ export async function replay(args: {
 
       // Scores come from the per-criterion ratings via the SAME production code path,
       // so the harness can never measure a different scoring rule than the app uses.
-      const assessments = parseAssessments(parsed);
+      const assessments = parseAssessments(parsed, contentChecks);
       const design = assessments ? scoreOf(assessments, "design") : null;
       const trust = assessments ? scoreOf(assessments, "trust") : null;
       const ux = assessments ? scoreOf(assessments, "ux") : null;
@@ -456,6 +465,8 @@ export async function replay(args: {
     console.log(`    Temperature   : not measured (needs --temps default,0).`);
   }
 
+  printCriterionStability(report.runs);
+
   const anyFallback = report.runs.some((r) => r.fellBack);
   if (anyFallback) {
     console.log(`\n    *** A run fell back to a different model — that cell is contaminated. ***`);
@@ -466,4 +477,81 @@ export async function replay(args: {
   }
 
   console.log(`\n  Full results: ${resultPath}\n`);
+}
+
+/**
+ * Per-criterion answer stability across runs.
+ *
+ * The aggregate range tells you IF the rubric is noisy; this tells you WHERE. A criterion
+ * that flips between yes and no on identical input is badly worded — it is asking for a
+ * judgment rather than an observation — and should be rewritten or moved to the code
+ * tier. Without this table the only options are guessing which criterion is at fault, or
+ * rewriting all sixty.
+ *
+ * Code-tier criteria are included deliberately: they must show 0% instability, so any
+ * movement there is a real bug rather than model noise.
+ */
+function printCriterionStability(runs: ReplayRun[]): void {
+  const parsed = runs.filter((r) => r.assessments !== null);
+  if (parsed.length < 2) {
+    console.log(`\n  CRITERION STABILITY: needs at least 2 parsed runs (got ${parsed.length}).`);
+    return;
+  }
+
+  // criterion id -> the rating seen in each run
+  const seen = new Map<string, string[]>();
+  for (const run of parsed) {
+    for (const a of run.assessments!) {
+      for (const c of a.criteria) {
+        const list = seen.get(c.id) ?? [];
+        list.push(c.rating);
+        seen.set(c.id, list);
+      }
+    }
+  }
+
+  const rows = [...seen.entries()]
+    .map(([id, ratings]) => {
+      const counts = new Map<string, number>();
+      for (const r of ratings) counts.set(r, (counts.get(r) ?? 0) + 1);
+      const majority = Math.max(...counts.values());
+      return {
+        id,
+        distinct: counts.size,
+        // Share of runs that disagreed with this criterion's most common answer.
+        instability: 1 - majority / ratings.length,
+        summary: [...counts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([r, n]) => `${r}x${n}`)
+          .join(" "),
+      };
+    })
+    .sort((a, b) => b.instability - a.instability);
+
+  const unstable = rows.filter((r) => r.distinct > 1);
+  const stablePct = Math.round(((rows.length - unstable.length) / rows.length) * 100);
+
+  console.log(
+    `\n  CRITERION STABILITY  (${parsed.length} runs · ${rows.length} criteria · ` +
+      `${stablePct}% gave the same answer every run)\n`
+  );
+
+  if (unstable.length === 0) {
+    console.log("    Every criterion answered identically across all runs.");
+    return;
+  }
+
+  console.log(
+    table(
+      ["criterion", "answers", "flip rate"],
+      unstable.map((r) => [r.id, r.summary, `${Math.round(r.instability * 100)}%`])
+    )
+      .split("\n")
+      .map((l) => "    " + l)
+      .join("\n")
+  );
+  console.log(
+    `\n    ${unstable.length} of ${rows.length} criteria disagreed with themselves. These are the\n` +
+      `    ones to rewrite as sharper observations, or move to the code tier.`
+  );
 }
