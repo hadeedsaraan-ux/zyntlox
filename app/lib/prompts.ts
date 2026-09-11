@@ -155,8 +155,6 @@ ${rubricSection()}
 
 For every text field below, provide TWO versions: a "technical" version (fine to use terms like UX, SEO, CTA, alt text) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, same problems, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
 
-For every item in "quickWins" and "suggestions", include a "snippet" only when the fix can be expressed as a concrete, ready-to-paste code change (e.g. a color/contrast fix or a heading structure fix — NOT alt text or meta tags, those are already handled by the Technical SEO Checks section). Write the snippet in a style matching the Detected Tech Stack above (use JSX for React/Next.js, PHP-friendly HTML for WordPress, otherwise plain HTML/CSS), and use realistic values pulled from the actual website data above where possible (real image context, real heading text) instead of generic placeholders like "TODO". If an item is not a code fix (e.g. content, copy, or strategy advice), set "snippet" to null. Do not force a snippet where one doesn't make sense.
-
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
   "firstImpression": "<technical: 2-3 sentences on what a visitor feels in the first 5 seconds>",
@@ -169,16 +167,7 @@ ${categorySchema("trust")}
   },
   "ux": {
 ${categorySchema("ux")}
-  },
-  "biggestProblems": [
-    {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
-  ],
-  "quickWins": [
-    {"text": "<technical, fixable in 10-30 min>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
-  ],
-  "suggestions": [
-    {"text": "<specific actionable technical suggestion>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
-  ]
+  }
 }`;
 }
 
@@ -298,4 +287,83 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly thi
  */
 export function buildCompareParts(input: ComparePromptInput): GeminiPart[] {
   return [{ text: buildComparePrompt(input) }];
+}
+
+/** A finished, code-computed assessment, handed to the prose writer as settled fact. */
+export interface ProsePromptInput {
+  url: string;
+  designScore: number;
+  trustScore: number;
+  uxScore: number;
+  seoScore: number;
+  overallScore: number;
+  detectedStack: string;
+  /** Criterion labels this page failed, heaviest first — the raw material for advice. */
+  failed: string[];
+  /** What it got right, so the write-up is not uniformly negative. */
+  met: string[];
+}
+
+/** Minimum and maximum items per prose section. */
+const PROSE_MIN = 3;
+const PROSE_MAX = 5;
+
+/**
+ * The written half of a report: biggest problems, quick wins, suggestions.
+ *
+ * Split out of the criteria call because the two were competing and the prose was
+ * losing. With the criteria in the same response, every model tested returned just one
+ * or two items per section — `p2/w1/s1`, `p1/w1/s1` — because the schema showed a
+ * single-element array and ~80 criterion objects crowded out the tail of the response.
+ *
+ * Separating them also makes the advice better: this call receives the list of criteria
+ * the page actually failed, so it recommends fixes for real findings instead of
+ * improvising generic advice.
+ */
+export function buildProsePrompt(input: ProsePromptInput): string {
+  return `You are a brutally honest but helpful website reviewer. This page has ALREADY been assessed against a fixed checklist and scored by code. Your job is to turn those findings into advice the owner can act on.
+
+PAGE: ${input.url}
+SCORES (final — do not restate, dispute or output any numbers of your own): Design ${input.designScore}/10 · Trust ${input.trustScore}/10 · UX ${input.uxScore}/10 · Technical ${input.seoScore}/10 · Overall ${input.overallScore}/100
+TECH STACK: ${input.detectedStack}
+
+WHAT THE PAGE FAILED (${input.failed.length}):
+${input.failed.map((f) => `  - ${f}`).join("\n") || "  (nothing failed)"}
+
+WHAT THE PAGE GOT RIGHT (${input.met.length}):
+${input.met.slice(0, 25).map((m) => `  - ${m}`).join("\n") || "  (nothing)"}
+
+Write your findings from the FAILED list above. Every problem, win and suggestion must trace back to something on that list — do not invent issues that were not found, and do not repeat an item that is already listed as passing.
+
+Do NOT state counts or measurements of your own. You have not seen the page; you have the findings above. Never write a number that does not appear above.
+
+You MUST return between ${PROSE_MIN} and ${PROSE_MAX} items in EACH of the three sections. Fewer than ${PROSE_MIN} is not acceptable — if the page failed few checks, cover the most valuable improvements it could still make. Order every list most-important first.
+
+  - biggestProblems: what is costing this site visitors or credibility right now.
+  - quickWins: genuinely fixable in 10-30 minutes each.
+  - suggestions: larger or more strategic changes worth planning.
+
+Include a "snippet" only where the fix is a concrete, ready-to-paste code change (a contrast fix, a heading structure fix, a button style). Write it in a style matching the tech stack above — JSX for React/Next.js, PHP-friendly HTML for WordPress, otherwise plain HTML/CSS. Where the item is content, copy or strategy advice, set "snippet" to null. Do not force a snippet where one does not make sense.
+
+For every text field, provide TWO versions: a "technical" version (terms like UX, SEO, CTA, alt text are fine) and a plain-English version prefixed "plain" (zero jargon, as if explaining to a small business owner with no web background — same meaning, just plain words). Keep the plain arrays the same length and order as their technical counterparts.
+
+Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
+{
+  "biggestProblems": [
+    {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
+  ],
+  "quickWins": [
+    {"text": "<technical, fixable in 10-30 min>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+  ],
+  "suggestions": [
+    {"text": "<specific actionable technical suggestion>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+  ]
+}
+
+Remember: ${PROSE_MIN}-${PROSE_MAX} items in each of the three arrays.`;
+}
+
+/** Text only — the page was already looked at during the criteria call. */
+export function buildProseParts(input: ProsePromptInput): GeminiPart[] {
+  return [{ text: buildProsePrompt(input) }];
 }
