@@ -28,7 +28,15 @@ export interface ActionItem {
   snippet: CodeSnippet | null;
 }
 
-export type GeminiModel = "gemini-flash-latest" | "gemini-flash-lite-latest";
+/**
+ * Prefer `-latest` aliases over pinned versions. Pinned model ids are retired without
+ * warning — `gemini-2.5-flash` now returns 404 — which would take the primary model out
+ * silently. `gemini-3.5-flash-lite` is the one pinned entry, kept as a middle fallback.
+ */
+export type GeminiModel =
+  | "gemini-flash-lite-latest"
+  | "gemini-3.5-flash-lite"
+  | "gemini-flash-latest";
 
 /** A single element of the Gemini `contents[0].parts` array. */
 export type GeminiPart =

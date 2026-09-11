@@ -1,8 +1,28 @@
 import { GeminiModel, GeminiPart, ProgressStage } from "./types";
 
-// Models to try, in order. If one is overloaded (503) or rate-limited (429), we retry it
-// a few times with backoff before falling back to the next.
-const MODELS: readonly GeminiModel[] = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+/**
+ * Models to try, in order. If one is overloaded (503) or rate-limited (429), we retry it
+ * a few times with backoff before falling back to the next.
+ *
+ * Order is measured, not assumed. `gemini-flash-latest` used to lead this list and is
+ * reliably 503 "experiencing high demand" against our payload, which is why every report
+ * carried a "backup model used" notice — the fallback was the normal path, not the
+ * exception. Probed on the real fixture:
+ *
+ *   gemini-flash-lite-latest   200   8.1s   0 thinking tokens
+ *   gemini-3.5-flash-lite      200   6.9s   0 thinking tokens
+ *   gemini-flash-latest        503   overloaded
+ *   gemini-3-flash-preview     200   25s    1591 thinking tokens (too slow)
+ *   gemini-2.5-flash           404   retired
+ */
+const MODELS: readonly GeminiModel[] = [
+  "gemini-flash-lite-latest",
+  "gemini-3.5-flash-lite",
+  "gemini-flash-latest",
+];
+
+/** The model a healthy request is expected to use. Drives the report's backup notice. */
+export const PRIMARY_MODEL: GeminiModel = MODELS[0];
 const MAX_ATTEMPTS_PER_MODEL = 3;
 const BASE_DELAY_MS = 500;
 const MAX_DELAY_MS = 8000;
@@ -10,6 +30,45 @@ const MAX_DELAY_MS = 8000;
 function backoffDelay(attempt: number): number {
   const exp = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** (attempt - 1));
   return exp + Math.random() * 300;
+}
+
+/** A per-DAY quota. Distinct from a per-minute rate limit, which backoff does clear. */
+function isDailyQuotaError(message: string): boolean {
+  return /per ?day|perday|daily limit|quota.*exceeded.*day/i.test(message);
+}
+
+/**
+ * Whether retrying this same model could plausibly succeed within our backoff window.
+ *
+ * 429 is deliberately NOT retryable as a class. A per-minute rate limit clears in
+ * seconds, but the free tier's per-day quota does not clear for hours — retrying it three
+ * times with exponential backoff spent ~10 seconds of the user's wait on an error that
+ * was never going to resolve, and only then fell through to the next model.
+ *
+ * 404 means the model id was retired (as `gemini-2.5-flash` was). Never retryable, and
+ * worth shouting about, because it silently removes an entry from the fallback chain.
+ */
+function isRetryableError(response: GeminiApiResponse, model: GeminiModel): boolean {
+  const code = response?.error?.code;
+  const message = response?.error?.message ?? "";
+
+  if (code === 404) {
+    console.error(
+      `Gemini model "${model}" returned 404 — it has probably been retired. ` +
+        `Remove it from MODELS or replace it with a -latest alias.`
+    );
+    return false;
+  }
+
+  if (code === 429) {
+    if (isDailyQuotaError(message)) {
+      console.error(`Gemini daily quota exhausted for "${model}"; moving to the next model.`);
+      return false;
+    }
+    return true; // per-minute rate limit — backoff genuinely helps
+  }
+
+  return code === 503;
 }
 
 export interface GeminiApiResponse {
@@ -122,9 +181,7 @@ export async function callGeminiWithRetry(
         console.error(`Gemini error (model: ${model}, attempt: ${attempt}):`, geminiData);
         lastError = geminiData;
 
-        const isRetryable =
-          geminiData?.error?.code === 503 || geminiData?.error?.code === 429;
-        if (!isRetryable) break;
+        if (!isRetryableError(geminiData, model)) break;
 
         if (attempt < MAX_ATTEMPTS_PER_MODEL) {
           await new Promise((res) => setTimeout(res, backoffDelay(attempt)));
@@ -141,4 +198,15 @@ export async function callGeminiWithRetry(
   }
 
   throw lastError; // all models/attempts failed
+}
+
+/**
+ * Whether a report was answered by something other than the primary model.
+ *
+ * Derived from the chain rather than compared against a hardcoded id: the previous
+ * version tested `modelUsed !== "gemini-flash-latest"`, so reordering the chain would
+ * have inverted the notice and shown it on every healthy request.
+ */
+export function usedBackupModel(modelUsed: GeminiModel | undefined): boolean {
+  return modelUsed !== undefined && modelUsed !== PRIMARY_MODEL;
 }

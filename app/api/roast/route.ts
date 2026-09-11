@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callGeminiWithRetry } from "../../lib/gemini";
+import { callGeminiWithRetry, usedBackupModel } from "../../lib/gemini";
 import { fetchSiteData, ExtractedSiteData } from "../../lib/siteData";
 import { createProgressStream } from "../../lib/progress";
 import { computeSeoAudit } from "../../lib/seoAudit";
 import { computeContentChecks } from "../../lib/contentChecks";
 import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scoring";
-import { buildRoastParts } from "../../lib/prompts";
+import { criterionDef, criterionLabel, criterionWeight } from "../../lib/criteria";
+import { buildRoastParts, buildProseParts } from "../../lib/prompts";
 import { hostOf, logEvent } from "../../lib/log";
 import { Report } from "../../lib/types";
 
@@ -122,8 +123,50 @@ export async function POST(request: NextRequest) {
         seoChecks.seoScore
       );
 
+      // Second call: the written sections. Split out because when criteria and prose
+      // shared one response the prose lost — every model returned one or two items per
+      // section instead of three to five. This call sees the failed criteria, so the
+      // advice is grounded in real findings rather than improvised.
+      sendStage({ id: "gemini", label: "Writing up what to fix…" });
+      const rated = assessments.flatMap((a) => a.criteria);
+      const byWeight = (a: { id: string }, b: { id: string }) => {
+        const da = criterionDef(a.id);
+        const db = criterionDef(b.id);
+        return (db ? criterionWeight(db) : 1) - (da ? criterionWeight(da) : 1);
+      };
+      const labelOf = (c: { id: string; evidence: string }) =>
+        c.evidence ? `${criterionLabel(c.id, "technical")} — ${c.evidence}` : criterionLabel(c.id, "technical");
+
+      let prose: Record<string, unknown> = {};
+      try {
+        const res = await callGeminiWithRetry(
+          buildProseParts({
+            url,
+            designScore,
+            trustScore,
+            uxScore,
+            seoScore: seoChecks.seoScore,
+            overallScore,
+            detectedStack: extractedData.detectedStack,
+            failed: rated.filter((c) => c.rating === "no").sort(byWeight).map(labelOf),
+            met: rated.filter((c) => c.rating === "yes").sort(byWeight).map((c) => criterionLabel(c.id, "technical")),
+          }),
+          sendStage,
+          { jsonMode: true }
+        );
+        const raw = res.data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        prose = JSON.parse(raw.replace(/```json/g, "").replace(/```/g, "").trim());
+      } catch (err) {
+        // The scores and the full criteria breakdown are already complete and correct.
+        // Losing the write-up should cost those sections, never the whole report.
+        console.error("Prose call failed; returning the report without written sections:", err);
+      }
+
       const report: Report = {
         ...aiReport,
+        biggestProblems: Array.isArray(prose.biggestProblems) ? prose.biggestProblems : [],
+        quickWins: Array.isArray(prose.quickWins) ? prose.quickWins : [],
+        suggestions: Array.isArray(prose.suggestions) ? prose.suggestions : [],
         designScore,
         trustScore,
         uxScore,
@@ -140,7 +183,7 @@ export async function POST(request: NextRequest) {
         isVerified: extractedData.isVerified,
         hasScreenshot: Boolean(screenshotBase64),
         modelUsed,
-        modelFellBack: modelUsed !== "gemini-flash-latest",
+        modelFellBack: usedBackupModel(modelUsed),
         geminiAttempts,
         temperature: null, // production sends no generationConfig
         designScore,
@@ -167,6 +210,11 @@ export async function POST(request: NextRequest) {
         geminiMs,
         totalMs: Date.now() - requestStartedAt,
         promptChars: parts[0] && "text" in parts[0] ? parts[0].text.length : 0,
+        proseCounts: {
+          problems: Array.isArray(prose.biggestProblems) ? prose.biggestProblems.length : 0,
+          wins: Array.isArray(prose.quickWins) ? prose.quickWins.length : 0,
+          suggestions: Array.isArray(prose.suggestions) ? prose.suggestions.length : 0,
+        },
         parseOk: true,
       });
 

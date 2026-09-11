@@ -10,6 +10,7 @@ import {
   groupSeoChecks,
 } from "../labels";
 import { criterionLabel, groupResultsBySubgroup } from "../criteria";
+import { usedBackupModel } from "../gemini";
 
 const COLORS = {
   bg: "#1a1614",
@@ -363,7 +364,7 @@ export default function ReportDocument({
           <Text style={styles.meta}>
             Generated {generatedAt} · {mode === "plain" ? "Plain English" : "Technical"} mode
           </Text>
-          {report.modelUsed !== "gemini-flash-latest" && (
+          {usedBackupModel(report.modelUsed) && (
             <Text style={styles.meta}>{labels.backupModelNotice}</Text>
           )}
         </View>
@@ -444,6 +445,7 @@ export default function ReportDocument({
                             g.hasFailure ? { color: COLORS.danger } : {},
                           ]}
                         >
+                          {g.issues > 0 ? `${g.issues} issue${g.issues > 1 ? "s" : ""} · ` : ""}
                           {g.met}/{g.answered}
                         </Text>
                       </View>

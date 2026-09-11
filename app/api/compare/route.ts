@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callGeminiWithRetry } from "../../lib/gemini";
+import { callGeminiWithRetry, usedBackupModel } from "../../lib/gemini";
 import { fetchSiteData, SiteDataResult } from "../../lib/siteData";
 import { createProgressStream } from "../../lib/progress";
 import { computeSeoAudit } from "../../lib/seoAudit";
@@ -310,7 +310,7 @@ export async function POST(request: NextRequest) {
         yoursHost: hostOf(yourUrl),
         competitorHost: hostOf(competitorUrl),
         modelUsed,
-        modelFellBack: modelUsed !== "gemini-flash-latest",
+        modelFellBack: usedBackupModel(modelUsed),
         yours: {
           dataSource: yours.dataSource,
           isVerified: yours.isVerified,

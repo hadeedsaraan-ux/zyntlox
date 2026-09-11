@@ -1,5 +1,6 @@
 import { CheckStatus, ComparisonReport, ComparisonWinner, ReportMode, SeoChecks, SiteSummary } from "../lib/types";
 import { LABELS, SEO_CHECK_LABELS, formatSeoCheckDetail } from "../lib/labels";
+import { usedBackupModel } from "../lib/gemini";
 import ScoreGauge from "./ScoreGauge";
 
 function statusDotClass(status: CheckStatus): string {
@@ -127,7 +128,7 @@ export default function CompetitorComparison({
         <SiteCard title="Competitor Site" site={comparison.competitor} mode={mode} />
       </div>
 
-      {comparison.modelUsed !== "gemini-flash-latest" && (
+      {usedBackupModel(comparison.modelUsed) && (
         <p className="font-mono text-[10px] text-[var(--muted)] text-center">
           {labels.backupModelNotice}
         </p>

@@ -29,7 +29,9 @@ export const LABELS: Record<
     technicalSeoChecks: "Technical SEO Checks",
     seoUnverifiedNotice:
       "These checks are best-effort estimates from unrendered HTML (our screenshot/analysis service was unavailable) — some values may be inaccurate for JavaScript-heavy sites.",
-    backupModelNotice: "Backup AI model used — subjective scores below may be less consistent than usual.",
+    // Deliberately does NOT claim the scores are less reliable. The measured 6-point
+    // spread was taken on the fallback model, so that claim was never supported.
+    backupModelNotice: "Our first-choice AI model was busy, so a backup model produced this analysis.",
     scoreBreakdown: "Score Breakdown",
   },
   plain: {
@@ -44,7 +46,7 @@ export const LABELS: Record<
     technicalSeoChecks: "Search Engine Checklist",
     seoUnverifiedNotice:
       "We couldn't fully load this page to double check these numbers, so a few of them below might be a little off.",
-    backupModelNotice: "We used our backup AI for this one — a few of the opinions above might be a little less sharp than usual.",
+    backupModelNotice: "Our usual AI was busy, so we used our backup one for this report.",
     scoreBreakdown: "How We Scored It",
   },
 };

@@ -9,6 +9,7 @@ import {
   groupSeoChecks,
 } from "../lib/labels";
 import { criterionLabel, groupResultsBySubgroup } from "../lib/criteria";
+import { usedBackupModel } from "../lib/gemini";
 import ScoreGauge from "./ScoreGauge";
 import CodeSnippet from "./CodeSnippet";
 
@@ -50,7 +51,7 @@ export default function RoastReport({
         <p className="text-[var(--text)] opacity-90 leading-relaxed">
           {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
         </p>
-        {report.modelUsed !== "gemini-flash-latest" && (
+        {usedBackupModel(report.modelUsed) && (
           <p className="font-mono text-[10px] text-[var(--muted)] mt-2">
             {labels.backupModelNotice}
           </p>
@@ -103,24 +104,29 @@ export default function RoastReport({
                     so problems are never a click away. */}
                 <div className="space-y-2">
                   {groupResultsBySubgroup(a.category, a.criteria).map((g) => (
+                    // Always closed. The tally and issue count in the summary are what
+                    // signal there is something inside, so a group never springs open
+                    // and lengthens the page before the reader asks for it.
                     <details
                       key={g.subgroup}
-                      open={g.hasFailure}
                       className="group border-b border-[var(--border)] last:border-0 pb-2"
                     >
-                      <summary className="flex items-baseline justify-between cursor-pointer list-none py-1">
+                      <summary className="flex items-baseline justify-between gap-2 cursor-pointer list-none py-1 hover:text-[var(--amber)] transition-colors">
                         <span className="text-[var(--text)] text-sm font-semibold">
                           <span className="inline-block w-3 text-[var(--muted)] group-open:rotate-90 transition-transform">
                             ›
                           </span>
                           {g.subgroup}
                         </span>
-                        <span
-                          className={`font-mono text-xs ${
-                            g.hasFailure ? "text-[var(--danger)]" : "text-[var(--muted)]"
-                          }`}
-                        >
-                          {g.met}/{g.answered}
+                        <span className="flex items-baseline gap-1.5 shrink-0">
+                          {g.issues > 0 && (
+                            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger)]/15 text-[var(--danger)]">
+                              {g.issues}
+                            </span>
+                          )}
+                          <span className="font-mono text-xs text-[var(--muted)]">
+                            {g.met}/{g.answered}
+                          </span>
                         </span>
                       </summary>
                       <div className="space-y-2 pl-3 pt-1">
