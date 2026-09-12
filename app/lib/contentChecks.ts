@@ -132,6 +132,11 @@ function plural(n: number, one: string, many = one + "s"): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** The matching verb form for a count produced by plural() — "1 link uses", "3 links use". */
+function verb(n: number, singular: string, pluralForm: string): string {
+  return n === 1 ? singular : pluralForm;
+}
+
 function linkMatching(links: MarkdownLink[], pattern: RegExp): MarkdownLink | undefined {
   return links.find((l) => pattern.test(l.text) || pattern.test(l.href));
 }
@@ -470,7 +475,7 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
   const vague = links.filter((l) => VAGUE_LINK_TEXT.test(l.text));
   add(result("noClickHere", vague.length === 0,
     "No uninformative link text.",
-    `${plural(vague.length, "link")} use uninformative text such as "${vague[0]?.text}" — meaningless out of context.`));
+    `${plural(vague.length, "link")} ${verb(vague.length, "uses", "use")} uninformative text such as "${vague[0]?.text}" — meaningless out of context.`));
 
   const named = links.filter((l) => l.text.split(/\s+/).filter(Boolean).length >= 2).length;
   add(links.length === 0
@@ -482,7 +487,7 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
   const bareUrls = links.filter((l) => /^https?:\/\//i.test(l.text));
   add(result("noBareUrls", bareUrls.length === 0,
     "No raw URLs used as link text.",
-    `${plural(bareUrls.length, "link")} show a raw web address instead of readable text.`));
+    `${plural(bareUrls.length, "link")} ${verb(bareUrls.length, "shows", "show")} a raw web address instead of readable text.`));
 
   const byText = new Map<string, Set<string>>();
   for (const l of links) {
@@ -493,18 +498,18 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
   const ambiguous = [...byText.entries()].filter(([, hrefs]) => hrefs.size > 1);
   add(result("noDuplicateLinkText", ambiguous.length < 3,
     `${ambiguous.length} link labels point to more than one place.`,
-    `${plural(ambiguous.length, "link label")} (e.g. "${ambiguous[0]?.[0]}") point to different destinations, which is ambiguous.`));
+    `${plural(ambiguous.length, "link label")} (e.g. "${ambiguous[0]?.[0]}") ${verb(ambiguous.length, "points", "point")} to different destinations, which is ambiguous.`));
 
   const mailtos = links.filter((l) => /^mailto:/i.test(l.href));
   const badMailto = mailtos.filter((l) => !/^mailto:[\w.+-]+@[\w-]+\.[\w.]{2,}/i.test(l.href));
   add(result("mailtoValid", badMailto.length === 0,
-    mailtos.length ? `All ${plural(mailtos.length, "email link")} are well formed.` : "No email links to validate.",
-    `${plural(badMailto.length, "email link")} are malformed and will not open a mail client.`));
+    mailtos.length ? `All ${plural(mailtos.length, "email link")} ${verb(mailtos.length, "is", "are")} well formed.` : "No email links to validate.",
+    `${plural(badMailto.length, "email link")} ${verb(badMailto.length, "is", "are")} malformed and will not open a mail client.`));
 
   const deadLinks = links.filter((l) => /^javascript:|^#$/i.test(l.href));
   add(result("noJavascriptLinks", deadLinks.length === 0,
     "No dead or placeholder link targets.",
-    `${plural(deadLinks.length, "link")} point nowhere (javascript: or a bare #).`));
+    `${plural(deadLinks.length, "link")} ${verb(deadLinks.length, "points", "point")} nowhere (javascript: or a bare #).`));
 
   // ===== Forms & interaction =====
   // The form markers below come from the scraper's markdown conversion. `[Form: …]` is
@@ -531,7 +536,7 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
 
     const unlabelled = visible.filter((m) => !/label=/i.test(m[2]));
     add(result("labelledInputs", unlabelled.length === 0,
-      `All ${plural(visible.length, "form field")} carry a label.`,
+      `All ${plural(visible.length, "form field")} ${verb(visible.length, "carries", "carry")} a label.`,
       `${unlabelled.length} of ${visible.length} form fields have no label.`));
   }
 
