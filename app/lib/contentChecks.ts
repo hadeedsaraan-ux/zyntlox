@@ -29,10 +29,33 @@ interface PageStats {
   hasInputMarkers: boolean;
 }
 
-/** Markdown links, excluding image embeds (`![alt](src)`). */
+/**
+ * Markdown links, excluding pure image embeds (`![alt](src)`).
+ *
+ * Handles two shapes:
+ *  1. A link wrapping an image — `[![alt](icon.png)](href)`. This is how icon-only
+ *     links (social-media icons in a footer, for example) are almost always written.
+ *     The general regex below can only express ONE bracket-paren pair, so on this
+ *     shape it used to match just as far as the image's own closing paren — reading
+ *     the icon's filename as the link's href and silently losing the real destination
+ *     entirely. That is how, e.g., a page's Twitter/LinkedIn/Instagram footer icons
+ *     could vanish from every link-based check (they never counted as internal OR
+ *     external — they just disappeared).
+ *  2. A normal text link — `[text](href)`.
+ * Nested-image links are extracted first and blanked out of the text, so the general
+ * pass below never re-parses (and mis-parses) the same substring.
+ */
 function parseLinks(markdown: string): MarkdownLink[] {
   const links: MarkdownLink[] = [];
-  for (const match of markdown.matchAll(/(!?)\[([^\]]*)\]\(([^)\s]*)[^)]*\)/g)) {
+
+  const nestedImageLink = /\[!\[([^\]]*)\]\([^)]*\)\]\(([^)\s]*)[^)]*\)/g;
+  let remaining = markdown;
+  for (const match of markdown.matchAll(nestedImageLink)) {
+    links.push({ text: match[1].trim(), href: match[2].trim() });
+    remaining = remaining.replace(match[0], " ".repeat(match[0].length));
+  }
+
+  for (const match of remaining.matchAll(/(!?)\[([^\]]*)\]\(([^)\s]*)[^)]*\)/g)) {
     if (match[1] === "!") continue;
     links.push({ text: match[2].trim(), href: match[3].trim() });
   }
