@@ -39,6 +39,20 @@ function parseLinks(markdown: string): MarkdownLink[] {
   return links;
 }
 
+/**
+ * Extracts a comparable hostname from a URL, stripping "www." so
+ * "www.example.com" and "example.com" are treated as the same site.
+ * Returns null for relative paths, mailto:, tel:, javascript:, etc. —
+ * those are never "external" in the off-site sense this check cares about.
+ */
+function hostnameOf(href: string): string | null {
+  try {
+    return new URL(href).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 /** Strips markup so word counts and readability measure prose, not syntax. */
 function proseOf(markdown: string): string {
   return markdown
@@ -99,9 +113,33 @@ const ACTION_WORDS =
   /\b(get started|start (?:now|free|today)|sign ?up|register|buy|shop|order|book|schedule|reserve|subscribe|join|try (?:it|free|now)|download|request|get (?:a )?(?:quote|demo|in touch)|contact us|apply|donate|enquire|inquire|add to (?:cart|bag)|see plans|view pricing)\b/i;
 const VAGUE_LINK_TEXT = /^(click here|read more|more|learn more|here|link|this|details|info|continue|go|see more|>>?|→)$/i;
 
+/**
+ * Tightened from the original. The old version matched any "number + up to 4 words +
+ * street-type word" anywhere in the page copy, with no requirement that the words in
+ * between look like a street name — which is how "...its 2026 Road to Battlefield
+ * winners..." (a headline, not an address) matched as a physical address on TechCrunch.
+ *
+ * This version: limits the gap to 0-2 words (real addresses are short — "123 Main St",
+ * "42 Wallaby Way"), and excludes a match immediately followed by "to/for/in/of" — the
+ * exact shape of the "Road to X" false positive, and one vanishingly rare in a real
+ * street address ("123 Main Street to" is not a sentence anyone writes).
+ */
 const ADDRESS_HINT =
-  /\b\d{1,5}[a-z]?[,\s]+(?:[A-Za-z.'-]+\s+){0,4}(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?|court|ct\.?|place|pl\.?|way|parade|terrace|highway|hwy\.?|suite|ste\.?|unit|floor|level)\b/i;
+  /\b\d{1,5}[a-zA-Z]?[,\s]+(?:[A-Za-z.'-]+\s+){0,2}(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?|court|ct\.?|place|pl\.?|way|parade|terrace|highway|hwy\.?|suite|ste\.?|unit|floor|level)\b(?!\s+(?:to|for|in|of)\b)/i;
 const POSTCODE_HINT = /\b(?:[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}|\d{5}(?:-\d{4})?|\d{4})\b/;
+
+/**
+ * Tightened from the original `\d{3,4}[\s.-]\d{3,4}` — that shape matches any two
+ * adjacent number groups anywhere in text, which is how "TechCrunch Startup
+ * Battlefield 200 2023" (an image's alt text) was read as a phone number.
+ *
+ * This version requires one of three actual phone shapes: a country code followed by
+ * 2-3 more groups, a parenthesised area code, or a 3-3-4 grouping (the standard
+ * US/Canada format) — all of which need three total digit groups, not two, so a bare
+ * "200 2023" no longer matches.
+ */
+const PHONE_HINT =
+  /\+\d{1,3}[\s.-]?\(?\d{1,4}\)?(?:[\s.-]\d{2,4}){2,3}\b|\(\d{2,4}\)[\s.-]?\d{3,4}[\s.-]?\d{2,4}\b|\b\d{3}[\s.-]\d{3}[\s.-]\d{4}\b/;
 
 const CURRENCY_TOKEN = /[$£€¥₹]\s?\d|(?:\d+(?:[.,]\d+)?)\s?(?:USD|EUR|GBP|AUD|CAD|NZD)\b/gi;
 const JARGON =
@@ -185,7 +223,16 @@ function absenceCheck(
 
 // --- the checks --------------------------------------------------------------
 
-export function computeContentChecks(markdown: string | null): Map<string, CriterionResult> {
+/**
+ * @param markdown The page's full, untruncated markdown.
+ * @param siteUrl The URL being audited. Used to resolve which links are genuinely
+ *   off-site — without it, externalLinkBalance falls back to the old (less accurate)
+ *   "is this an absolute URL at all" test. Pass the same `url` the route already has.
+ */
+export function computeContentChecks(
+  markdown: string | null,
+  siteUrl?: string | null
+): Map<string, CriterionResult> {
   const out = new Map<string, CriterionResult>();
   const s = analyse(markdown);
   const add = (r: CriterionResult) => out.set(r.id, r);
@@ -199,7 +246,7 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
     "No email address or mailto: link found in the page text."));
 
   const tel = links.find((l) => /^tel:/i.test(l.href));
-  const literalPhone = md.match(/(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{3,4}[\s.-]\d{3,4}(?:[\s.-]\d{3,4})?/);
+  const literalPhone = md.match(PHONE_HINT);
   add(result("contactPhone", Boolean(tel || literalPhone),
     `Phone found: ${tel ? tel.href.replace(/^tel:/i, "") : literalPhone?.[0].trim()}`,
     "No phone number or tel: link found in the page text."));
@@ -207,8 +254,16 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
   add(linkCheck("contactRoute", links, /\bcontact|get in touch|reach us\b/i,
     "Contact link", "No link to a contact page or form was found."));
 
+  // Require a postcode-shaped token to appear close to the street match — not merely
+  // anywhere on the page — so a stray 4-digit year elsewhere in the copy can no longer
+  // satisfy this on its own (that's how "2026 Road to..." plus any nearby "2026" used
+  // to combine into a false positive).
   const addressMatch = md.match(ADDRESS_HINT);
-  add(result("physicalAddress", Boolean(addressMatch && POSTCODE_HINT.test(md)),
+  const addressContext = addressMatch
+    ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 80)
+    : "";
+  const addressConfirmed = Boolean(addressMatch) && POSTCODE_HINT.test(addressContext);
+  add(result("physicalAddress", addressConfirmed,
     `A street address appears on the page: "${addressMatch?.[0].trim()}"`,
     "No physical or postal address was found."));
 
@@ -242,7 +297,11 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
     "No refund, returns or cancellation information was found."));
   add(linkCheck("shippingInfo", links, /\bshipping|delivery|postage|fulfilment|fulfillment\b/i,
     "Shipping link", "No delivery or shipping information was found."));
-  add(textCheck("copyrightNotice", md, /(?:©|&copy;|\(c\)|copyright)\s*(?:19|20)?\d{0,4}/i,
+  // Widened from `\d{0,4}` to `[^\n]{0,40}` for the EVIDENCE text only — the previous
+  // version could capture just "37" out of "© 37signals LLC" because \d{0,4} stopped at
+  // the first non-digit. The presence/absence result was never wrong; only the snippet
+  // shown as evidence was confusing. This grabs the fuller, more legible phrase instead.
+  add(textCheck("copyrightNotice", md, /(?:©|&copy;|\(c\)|copyright)[^\n]{0,40}/i,
     "Copyright notice present", "No copyright notice was found anywhere on the page."));
 
   // ===== Commerce & guarantees =====
@@ -282,7 +341,18 @@ export function computeContentChecks(markdown: string | null): Map<string, Crite
   add(textCheck("pressMentions", md, /\b(as (?:seen|featured) in|featured in|press|award[- ]winning|winner of|certified|accredited|member of|ISO \d)/i,
     "Credibility reference", "No press coverage, awards, certifications or memberships were mentioned."));
 
-  const external = links.filter((l) => /^https?:\/\//i.test(l.href)).length;
+  // Was: "is this an absolute https:// URL" — which counted every internal link a
+  // React/Next.js/Shopify site writes as a full URL (e.g. https://allbirds.com/products/…)
+  // as "external". Now: compares the link's actual hostname against the site's own
+  // hostname (both with "www." stripped), which is what "external" actually means.
+  // Falls back to the old, weaker test only if no siteUrl was passed in.
+  const siteHost = siteUrl ? hostnameOf(siteUrl) : null;
+  const external = siteHost
+    ? links.filter((l) => {
+        const h = hostnameOf(l.href);
+        return h !== null && h !== siteHost && !h.endsWith(`.${siteHost}`);
+      }).length
+    : links.filter((l) => /^https?:\/\//i.test(l.href)).length;
   add(links.length === 0
     ? unanswerable("externalLinkBalance", "No links on the page.")
     : result("externalLinkBalance", external / links.length < 0.5,
