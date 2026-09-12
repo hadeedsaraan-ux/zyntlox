@@ -44,7 +44,9 @@ export async function POST(request: NextRequest) {
 
       // The code tier: criteria answered deterministically rather than by the model.
       // Runs on the UNCAPPED markdown — footer links are what the prompt cap truncates.
-      const contentChecks = computeContentChecks(fullMarkdown);
+      // siteUrl is passed so externalLinkBalance can compare hostnames instead of just
+      // checking whether a link is an absolute URL — see contentChecks.ts.
+      const contentChecks = computeContentChecks(fullMarkdown, url);
 
       // Prompt construction lives in lib/prompts.ts so the diagnostics harness can
       // replay the exact prompt production sends, rather than a copy that can drift.
