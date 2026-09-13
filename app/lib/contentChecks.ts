@@ -31,19 +31,6 @@ interface PageStats {
 
 /**
  * Markdown links, excluding pure image embeds (`![alt](src)`).
- *
- * Handles two shapes:
- *  1. A link wrapping an image — `[![alt](icon.png)](href)`. This is how icon-only
- *     links (social-media icons in a footer, for example) are almost always written.
- *     The general regex below can only express ONE bracket-paren pair, so on this
- *     shape it used to match just as far as the image's own closing paren — reading
- *     the icon's filename as the link's href and silently losing the real destination
- *     entirely. That is how, e.g., a page's Twitter/LinkedIn/Instagram footer icons
- *     could vanish from every link-based check (they never counted as internal OR
- *     external — they just disappeared).
- *  2. A normal text link — `[text](href)`.
- * Nested-image links are extracted first and blanked out of the text, so the general
- * pass below never re-parses (and mis-parses) the same substring.
  */
 function parseLinks(markdown: string): MarkdownLink[] {
   const links: MarkdownLink[] = [];
@@ -63,16 +50,26 @@ function parseLinks(markdown: string): MarkdownLink[] {
 }
 
 /**
- * Extracts a comparable hostname from a URL, stripping "www." so
- * "www.example.com" and "example.com" are treated as the same site.
- * Returns null for relative paths, mailto:, tel:, javascript:, etc. —
- * those are never "external" in the off-site sense this check cares about.
+ * Extracts a comparable hostname from a URL, stripping "www."
  */
 function hostnameOf(href: string): string | null {
   try {
     return new URL(href).hostname.replace(/^www\./i, "").toLowerCase();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Strips query parameters (?cookie=...) and hashes (#top) from href
+ * so path-based matching never gets confused by tracking or auth parameters.
+ */
+function cleanHrefPath(href: string): string {
+  try {
+    const u = new URL(href, "https://dummy.base");
+    return u.pathname.toLowerCase();
+  } catch {
+    return href.split("?")[0].split("#")[0].toLowerCase();
   }
 }
 
@@ -109,12 +106,7 @@ function collectHeadings(md: string): { level: number; text: string }[] {
 }
 
 /**
- * Prefers the scraper's DOM-computed link inventory (`domLinks`) over parsing markdown,
- * when present — falls back to `parseLinks` otherwise (an older scraper deployment, or
- * the raw-fetch path, which has no live browser to compute one at all). This is also
- * what fixes the SVG-icon-link bug for every check downstream: a markdown regex could
- * never recover an accessible name from an icon the scraper had already flattened to the
- * literal text "[SVG Icon]", but the browser's own accessible-name computation can.
+ * Prefers the scraper's DOM-computed link inventory (`domLinks`) over parsing markdown.
  */
 function linksFor(markdown: string, domLinks: DomLink[] | null | undefined): MarkdownLink[] {
   if (domLinks && domLinks.length > 0) {
@@ -140,12 +132,9 @@ function analyse(markdown: string | null, domLinks: DomLink[] | null | undefined
   };
 }
 
-/** Phrases suggesting a nearby fact is genuinely offered as a way to reach the business,
- *  rather than an incidental string elsewhere on the page (see CriterionConfidence). */
+/** Phrases suggesting a nearby fact is genuinely offered as a way to reach the business. */
 const CONTACT_CONTEXT = /\bcontact\b|\bget in touch\b|\breach us\b|\bcall us\b|\bemail us\b|\bfind us\b|\bvisit us\b/i;
 
-/** The first paragraph containing `needle`, or null. A heuristic, not an exact locator —
- *  good enough to decide a confidence tier, not load-bearing for anything stricter. */
 function paragraphContaining(paragraphs: string[], needle: string): string | null {
   return paragraphs.find((p) => p.includes(needle)) ?? null;
 }
@@ -162,30 +151,13 @@ const ACTION_WORDS =
 const VAGUE_LINK_TEXT = /^(click here|read more|more|learn more|here|link|this|details|info|continue|go|see more|>>?|→)$/i;
 
 /**
- * Tightened from the original. The old version matched any "number + up to 4 words +
- * street-type word" anywhere in the page copy, with no requirement that the words in
- * between look like a street name — which is how "...its 2026 Road to Battlefield
- * winners..." (a headline, not an address) matched as a physical address on TechCrunch.
- *
- * This version: limits the gap to 0-2 words (real addresses are short — "123 Main St",
- * "42 Wallaby Way"), and excludes a match immediately followed by "to/for/in/of" — the
- * exact shape of the "Road to X" false positive, and one vanishingly rare in a real
- * street address ("123 Main Street to" is not a sentence anyone writes).
+ * Street address regex tightened: requires a real street name before street type,
+ * preventing strings like "1 way" from falsely matching as a physical address.
  */
 const ADDRESS_HINT =
-  /\b\d{1,5}[a-zA-Z]?[,\s]+(?:[A-Za-z.'-]+\s+){0,2}(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?|court|ct\.?|place|pl\.?|way|parade|terrace|highway|hwy\.?|suite|ste\.?|unit|floor|level)\b(?!\s+(?:to|for|in|of)\b)/i;
+  /\b\d{1,5}[a-zA-Z]?[,\s]+[A-Za-z.'-]+\s+(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?|court|ct\.?|place|pl\.?|way|parade|terrace|highway|hwy\.?|suite|ste\.?|unit|floor|level)\b(?!\s+(?:to|for|in|of)\b)/i;
 const POSTCODE_HINT = /\b(?:[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}|\d{5}(?:-\d{4})?|\d{4})\b/;
 
-/**
- * Tightened from the original `\d{3,4}[\s.-]\d{3,4}` — that shape matches any two
- * adjacent number groups anywhere in text, which is how "TechCrunch Startup
- * Battlefield 200 2023" (an image's alt text) was read as a phone number.
- *
- * This version requires one of three actual phone shapes: a country code followed by
- * 2-3 more groups, a parenthesised area code, or a 3-3-4 grouping (the standard
- * US/Canada format) — all of which need three total digit groups, not two, so a bare
- * "200 2023" no longer matches.
- */
 const PHONE_HINT =
   /\+\d{1,3}[\s.-]?\(?\d{1,4}\)?(?:[\s.-]\d{2,4}){2,3}\b|\(\d{2,4}\)[\s.-]?\d{3,4}[\s.-]?\d{2,4}\b|\b\d{3}[\s.-]\d{3}[\s.-]\d{4}\b/;
 
@@ -204,12 +176,6 @@ function result(id: string, met: boolean, yesText: string, noText: string): Crit
   return { id, rating: met ? "yes" : "no", evidence: met ? yesText : noText };
 }
 
-/**
- * Like `result`, but for the handful of "does this business offer X" checks where a
- * "yes" can be more or less certain — see `CriterionConfidence`. `confidence: null` means
- * nothing was found at all (renders as "no"); otherwise the tier is attached to a "yes"
- * so `computeCategoryScore` can weight it as partial credit rather than a full point.
- */
 function tieredResult(
   id: string,
   confidence: CriterionConfidence | null,
@@ -220,12 +186,6 @@ function tieredResult(
   return { id, rating: "yes", evidence: yesText, confidence };
 }
 
-/**
- * For criteria the current markdown cannot answer at all. Returns "unclear", which is
- * excluded from scoring — never "no". Emitting "no" here would tell every site its form
- * fields are unlabelled purely because the scraper build in front of us doesn't emit
- * input markers yet, which is a false claim about their website.
- */
 function unanswerable(id: string, why: string): CriterionResult {
   return { id, rating: "unclear", evidence: why };
 }
@@ -234,30 +194,52 @@ function plural(n: number, one: string, many = one + "s"): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The matching verb form for a count produced by plural() — "1 link uses", "3 links use". */
 function verb(n: number, singular: string, pluralForm: string): string {
   return n === 1 ? singular : pluralForm;
 }
 
-function linkMatching(links: MarkdownLink[], pattern: RegExp): MarkdownLink | undefined {
-  return links.find((l) => pattern.test(l.text) || pattern.test(l.href));
+/**
+ * UNIVERSAL STRICT LINK MATCHER:
+ * 1. Checks text length: Navigation/policy links are concise (<= 6 words, <= 45 chars).
+ *    This completely stops long article titles (like news headlines) from matching.
+ * 2. Checks clean URL path (without query params) so "?cookie=..." or "?return=..."
+ *    never falsely matches buttons like "Log in" or social links.
+ */
+function strictLinkMatching(
+  links: MarkdownLink[],
+  textPattern: RegExp,
+  pathPattern?: RegExp
+): MarkdownLink | undefined {
+  return links.find((l) => {
+    const text = (l.text || "").trim();
+    const words = text.split(/\s+/).filter(Boolean);
+    // Navigation / Policy links are short. Long prose / article titles are discarded.
+    if (words.length <= 6 && text.length <= 45) {
+      if (textPattern.test(text)) return true;
+    }
+    // Path check without query parameters or hashes
+    if (pathPattern && l.href) {
+      const cleanPath = cleanHrefPath(l.href);
+      if (pathPattern.test(cleanPath)) return true;
+    }
+    return false;
+  });
 }
 
-/** Presence of a link matching `pattern`, with consistent evidence either way. */
-function linkCheck(
+function strictLinkCheck(
   id: string,
   links: MarkdownLink[],
-  pattern: RegExp,
+  textPattern: RegExp,
+  pathPattern: RegExp | undefined,
   label: string,
   missing: string
 ): CriterionResult {
-  const hit = linkMatching(links, pattern);
+  const hit = strictLinkMatching(links, textPattern, pathPattern);
   return hit
     ? result(id, true, `${label} found: "${(hit.text || hit.href).slice(0, 60)}"`, "")
     : result(id, false, "", missing);
 }
 
-/** Presence of a text pattern anywhere in the page copy. */
 function textCheck(
   id: string,
   md: string,
@@ -271,7 +253,6 @@ function textCheck(
     : result(id, false, "", missing);
 }
 
-/** Absence of an unwanted pattern — inverted, so a hit is a failure. */
 function absenceCheck(
   id: string,
   md: string,
@@ -288,30 +269,9 @@ function absenceCheck(
 // --- the checks --------------------------------------------------------------
 
 export interface ComputeContentChecksOptions {
-  /**
-   * The URL being audited. Used to resolve which links are genuinely off-site —
-   * without it, externalLinkBalance falls back to the old (less accurate) "is this an
-   * absolute URL at all" test. Pass the same `url` the route already has.
-   */
   siteUrl?: string | null;
-  /**
-   * The scraper's DOM-computed link inventory, when available — preferred over parsing
-   * markdown for every link-based check (see `linksFor`). `null`/absent falls back to
-   * `parseLinks`.
-   */
   domLinks?: DomLink[] | null;
-  /**
-   * An address found in structured data (JSON-LD/microdata) — see `siteData.ts`'s
-   * `findStructuredAddress`. The highest-confidence signal `physicalAddress` can have.
-   */
   structuredAddress?: string | null;
-  /**
-   * DOM-level commerce signals from the scraper (schema.org JSON-LD type, and presence
-   * of add-to-cart/buy-now/checkout buttons) — used to tell a genuine storefront apart
-   * from a content/news site that merely mentions dollar amounts in its copy (e.g. a
-   * news article about a "$40 billion deal"). A regex only sees text and cannot make
-   * this distinction; the browser can. See the "Commerce & guarantees" section below.
-   */
   commerceSignals?: {
     hasProductSchema: boolean;
     hasNewsSchema: boolean;
@@ -319,9 +279,6 @@ export interface ComputeContentChecksOptions {
   } | null;
 }
 
-/**
- * @param markdown The page's full, untruncated markdown.
- */
 export function computeContentChecks(
   markdown: string | null,
   options?: ComputeContentChecksOptions
@@ -339,15 +296,6 @@ export function computeContentChecks(
   const isLikelyContentSite = Boolean(commerceSignals?.hasNewsSchema && !isLikelyCommerceSite);
 
   // ===== Contact & location =====
-  //
-  // Confidence tiers exist because a regex finding an email/phone/address-shaped string
-  // is not the same claim as finding a real way to contact the business — Stripe's own
-  // demo email ("jane.diaz@stripe.com", a real string on their real domain, not a way to
-  // reach them) is exactly the case this distinguishes. A plain-text match is "medium" if
-  // it sits in a paragraph that also talks about contacting the business, "low" otherwise
-  // — either way it scores as partial credit, never the same as an actual mailto:/tel:
-  // link or a structured-data address. See CriterionConfidence / computeCategoryScore.
-
   const mailto = links.find((l) => /^mailto:/i.test(l.href));
   const literalEmailMatch = mailto ? null : s.prose.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/);
   const emailParagraph = literalEmailMatch ? paragraphContaining(s.paragraphs, literalEmailMatch[0]) : null;
@@ -386,13 +334,11 @@ export function computeContentChecks(
     "No phone number or tel: link found in the page text."
   ));
 
-  add(linkCheck("contactRoute", links, /\bcontact|get in touch|reach us\b/i,
+  add(strictLinkCheck("contactRoute", links,
+    /^(contact(\s+us)?|get\s+in\s+touch|reach\s+us|contact\s+support)$/i,
+    /\/(contact(-us)?|get-in-touch)\/?$/i,
     "Contact link", "No link to a contact page or form was found."));
 
-  // Require a postcode-shaped token to appear close to the street match — not merely
-  // anywhere on the page — so a stray 4-digit year elsewhere in the copy can no longer
-  // satisfy this on its own (that's how "2026 Road to..." plus any nearby "2026" used
-  // to combine into a false positive).
   const addressMatch = md.match(ADDRESS_HINT);
   const addressContext = addressMatch
     ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 80)
@@ -415,12 +361,11 @@ export function computeContentChecks(
     "No physical or postal address was found."
   ));
 
-  add(linkCheck("mapLink", links, MAP_HOSTS, "Map or directions link",
-    "No map or directions link was found."));
+  add(strictLinkCheck("mapLink", links,
+    /^(map|directions|find\s+us|view\s+on\s+google\s+maps)$/i,
+    MAP_HOSTS,
+    "Map or directions link", "No map or directions link was found."));
 
-  // Tightened: dropped the bare "opening hours"/"opening times" alternative, which
-  // matched a LABEL ("see our opening hours") with no actual hours in it at all. Both
-  // remaining alternatives require two real endpoints — a day range or a time range.
   add(textCheck("businessHours", md,
     /\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s*[-–—]\s*(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\s*[-–—]\s*\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/i,
     "Opening hours stated", "No opening hours or availability were found."));
@@ -428,7 +373,7 @@ export function computeContentChecks(
   const channels = [
     Boolean(mailto || literalEmailMatch),
     Boolean(tel || literalPhoneMatch),
-    Boolean(linkMatching(links, /\bcontact\b/i)),
+    Boolean(strictLinkMatching(links, /^(contact(\s+us)?|get\s+in\s+touch)$/i, /\/contact/i)),
     links.some((l) => SOCIAL_HOSTS.test(l.href)),
   ].filter(Boolean).length;
   add(result("multipleContactChannels", channels >= 2,
@@ -436,40 +381,42 @@ export function computeContentChecks(
     `Only ${plural(channels, "way")} to make contact was found — visitors who dislike that one have no alternative.`));
 
   // ===== Legal & policies =====
-  add(linkCheck("privacyPolicy", links, /\bprivacy\b/i, "Privacy link",
-    "No privacy policy link was found."));
-  add(linkCheck("termsPage", links, /\bterms\b|conditions\b|\beula\b/i, "Terms link",
-    "No terms or conditions link was found."));
-  add(linkCheck("cookiePolicy", links, /\bcookies?\b/i, "Cookie policy link",
-    "No cookie policy or cookie settings link was found."));
-  add(linkCheck("accessibilityStatement", links, /\baccessibility\b/i, "Accessibility link",
-    "No accessibility statement link was found."));
-  add(linkCheck("refundPolicy", links, /\brefund|returns?\b|cancellation/i, "Refund or returns link",
-    "No refund, returns or cancellation information was found."));
-  add(linkCheck("shippingInfo", links, /\bshipping|delivery|postage|fulfilment|fulfillment\b/i,
+  add(strictLinkCheck("privacyPolicy", links,
+    /^(privacy(\s+policy)?|privacy\s+notice|your\s+privacy)$/i,
+    /\/(privacy(-policy|-notice)?)\/?$/i,
+    "Privacy link", "No privacy policy link was found."));
+
+  add(strictLinkCheck("termsPage", links,
+    /^(terms(\s+of\s+(service|use))?|terms\s*&\s*conditions|eula|conditions\s+of\s+use)$/i,
+    /\/(terms|terms-of-service|terms-and-conditions|tos)\/?$/i,
+    "Terms link", "No terms or conditions link was found."));
+
+  add(strictLinkCheck("cookiePolicy", links,
+    /^(cookies?(\s+policy)?|cookie\s+(settings|preferences))$/i,
+    /\/(cookies?(-policy)?)\/?$/i,
+    "Cookie policy link", "No cookie policy or cookie settings link was found."));
+
+  add(strictLinkCheck("accessibilityStatement", links,
+    /^(accessibility(\s+statement)?)$/i,
+    /\/(accessibility(-statement)?)\/?$/i,
+    "Accessibility link", "No accessibility statement link was found."));
+
+  add(strictLinkCheck("refundPolicy", links,
+    /^(refunds?(\s+policy)?|returns?\s+policy|cancellation\s+policy|refunds?\s*&\s*returns?|returns?\s*&\s*exchanges?)$/i,
+    /\/(refunds?|returns?|cancellation)(-policy)?\/?$/i,
+    "Refund or returns link", "No refund, returns or cancellation information was found."));
+
+  add(strictLinkCheck("shippingInfo", links,
+    /^(shipping(\s+policy|\s+info)?|delivery(\s+policy|\s+info)?|fulfillment)$/i,
+    /\/(shipping|delivery)(-policy)?\/?$/i,
     "Shipping link", "No delivery or shipping information was found."));
-  // Shared with copyrightCurrent below — both used to run independent regexes with
-  // different windows (40 chars here, 15 there), so a copyright line like "Copyright ©
-  // All Rights Reserved 2024" (24 non-digit characters before the year) could pass this
-  // check while copyrightCurrent's narrower window missed the year entirely and reported
-  // no year found. Extracting the year FROM this same matched block instead makes that
-  // disagreement structurally impossible — there is only one source of truth now.
+
   const copyrightBlock = md.match(/(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/i);
   add(result("copyrightNotice", Boolean(copyrightBlock),
     `Copyright notice present: "${copyrightBlock?.[0].trim()}"`,
     "No copyright notice was found anywhere on the page."));
 
   // ===== Commerce & guarantees =====
-  //
-  // These checks assume the page belongs to something that sells directly — but a
-  // regex only sees text, and text alone cannot tell a news site's "$40 billion deal"
-  // apart from an actual product price. When the scraper's DOM-level signals say this
-  // is a content/news site (schema.org NewsArticle/NewsMediaOrganization) and NOT a
-  // storefront (no Product/Offer schema, no add-to-cart/buy-now/checkout button), the
-  // whole section is marked "unclear" (excluded from scoring) instead of reporting a
-  // string of false-negative "no"s for checks that were never relevant to begin with.
-  // Verified via console on nytimes.com: NewsArticle/NewsMediaOrganization schema
-  // present, zero Product/Offer schema, zero commerce buttons in the DOM.
   if (isLikelyContentSite) {
     add(unanswerable("pricingSignals", "This appears to be a content/news site, not a storefront — pricing checks don't apply."));
     add(unanswerable("currencyConsistent", "This appears to be a content/news site, not a storefront — pricing checks don't apply."));
@@ -479,7 +426,7 @@ export function computeContentChecks(
     add(unanswerable("securityAssurance", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
   } else {
     const priceMatches = [...md.matchAll(CURRENCY_TOKEN)].map((m) => m[0]);
-    const pricingLink = linkMatching(links, /\bpricing\b|\bplans\b|\bprice\b/i);
+    const pricingLink = strictLinkMatching(links, /^(pricing|plans|view\s+plans|see\s+pricing|price)$/i, /\/(pricing|plans)/i);
     add(result("pricingSignals", priceMatches.length > 0 || Boolean(pricingLink),
       priceMatches.length ? `Prices shown on the page (e.g. "${priceMatches[0].trim()}").` : `A pricing link was found: "${pricingLink?.text}"`,
       "No prices and no pricing page link were found."));
@@ -510,16 +457,13 @@ export function computeContentChecks(
   add(result("multiplePlatforms", socialHosts.length >= 2,
     `Profiles on ${plural(socialHosts.length, "platform")} are linked.`,
     socialHosts.length === 1 ? `Only one social platform (${socialHosts[0]}) is linked.` : "No social platforms are linked."));
-  add(linkCheck("reviewPlatformLink", links, REVIEW_HOSTS, "Independent review link",
-    "No link to an independent review platform (Google, Trustpilot, Yelp) was found."));
+  add(strictLinkCheck("reviewPlatformLink", links,
+    /^(reviews?|testimonials?|customer\s+reviews)$/i,
+    REVIEW_HOSTS,
+    "Independent review link", "No link to an independent review platform (Google, Trustpilot, Yelp) was found."));
   add(textCheck("pressMentions", md, /\b(as (?:seen|featured) in|featured in|press|award[- ]winning|winner of|certified|accredited|member of|ISO \d)/i,
     "Credibility reference", "No press coverage, awards, certifications or memberships were mentioned."));
 
-  // Was: "is this an absolute https:// URL" — which counted every internal link a
-  // React/Next.js/Shopify site writes as a full URL (e.g. https://allbirds.com/products/…)
-  // as "external". Now: compares the link's actual hostname against the site's own
-  // hostname (both with "www." stripped), which is what "external" actually means.
-  // Falls back to the old, weaker test only if no siteUrl was passed in.
   const siteHost = siteUrl ? hostnameOf(siteUrl) : null;
   const external = siteHost
     ? links.filter((l) => {
@@ -535,8 +479,6 @@ export function computeContentChecks(
 
   // ===== Freshness & maintenance =====
   const currentYear = new Date().getFullYear();
-  // Extracted from the SAME copyrightBlock computed above, not a fresh scan of `md` —
-  // see the comment on copyrightNotice for why that's the fix, not just a convenience.
   const copyYears = copyrightBlock
     ? [...copyrightBlock[0].matchAll(/(19|20)\d{2}/g)].map((m) => Number(m[0]))
     : [];
@@ -554,7 +496,9 @@ export function computeContentChecks(
   add(textCheck("datedContent", md,
     /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:19|20)\d{2}|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+(?:19|20)\d{2}|\b(?:19|20)\d{2}-\d{2}-\d{2}\b/i,
     "Dated content", "No content on the page carries a visible date."));
-  add(linkCheck("blogOrNewsLink", links, /\bblog\b|\bnews\b|\barticles?\b|\bupdates?\b|\binsights?\b/i,
+  add(strictLinkCheck("blogOrNewsLink", links,
+    /^(blog|news|articles|latest\s+news|updates|insights)$/i,
+    /\/(blog|news|articles|insights)\/?$/i,
     "Blog or news link", "No blog, news or updates section was linked."));
   add(absenceCheck("noComingSoon", md, COMING_SOON,
     "No unfinished or placeholder sections.", "The page still says"));
@@ -588,7 +532,9 @@ export function computeContentChecks(
     `${plural(jargonHits.length, "jargon phrase")} such as "${jargonHits[0]}" — these say nothing to a reader.`));
 
   // ===== Identity =====
-  add(linkCheck("aboutPage", links, /\babout|our story|who we are|meet the team|\bteam\b/i,
+  add(strictLinkCheck("aboutPage", links,
+    /^(about(\s+us)?|our\s+story|who\s+we\s+are|meet\s+the\s+team|the\s+team)$/i,
+    /\/(about(-us)?|our-story|who-we-are|team)\/?$/i,
     "About link", "No About, team, or company-story link was found."));
 
   // ===== Content structure =====
@@ -644,17 +590,31 @@ export function computeContentChecks(
         `Link text makes up most of the page's words — it reads as a menu rather than a page.`));
 
   // ===== Findability =====
-  add(linkCheck("searchLink", links, /\bsearch\b/i, "Search link",
-    "No search box or search link was found."));
-  add(result("homeLink", links.some((l) => /^\/?$|^https?:\/\/[^/]+\/?$/.test(l.href) || /\bhome\b/i.test(l.text)),
+  add(strictLinkCheck("searchLink", links,
+    /^(search|find)$/i,
+    /\/(search|find)\/?$/i,
+    "Search link", "No search box or search link was found."));
+
+  add(result("homeLink", links.some((l) => /^\/?$|^https?:\/\/[^/]+\/?$/.test(l.href) || /^home$/i.test(l.text.trim())),
     "A link back to the home page is present.",
     "No link back to the home page was found."));
-  add(linkCheck("faqOrHelpLink", links, /\bfaq\b|\bhelp\b|\bsupport\b|frequently asked/i,
+
+  add(strictLinkCheck("faqOrHelpLink", links,
+    /^(faq|faqs|help|support|help\s+center|customer\s+support|frequently\s+asked\s+questions)$/i,
+    /\/(faq|faqs|help|support|help-center)\/?$/i,
     "Help or FAQ link", "No FAQ, help or support link was found."));
-  add(linkCheck("sitemapLink", links, /\bsitemap\b/i, "Sitemap link", "No sitemap link was found."));
+
+  add(strictLinkCheck("sitemapLink", links,
+    /^(sitemap|site\s+map)$/i,
+    /\/(sitemap(\.xml)?)\/?$/i,
+    "Sitemap link", "No sitemap link was found."));
+
   add(textCheck("breadcrumbPresent", md, /\bbreadcrumb|\bhome\s*[»>\/›]\s*\w/i,
     "Breadcrumbs present", "No breadcrumb trail was found."));
-  add(linkCheck("resourcesLink", links, /\bresources?\b|\bguides?\b|\bdocs?\b|documentation|case stud(?:y|ies)|\bwhitepapers?\b/i,
+
+  add(strictLinkCheck("resourcesLink", links,
+    /^(resources|guides|docs|documentation|case\s+studies|whitepapers)$/i,
+    /\/(resources|guides|docs|documentation|case-studies|whitepapers)\/?$/i,
     "Resources link", "No guides, resources, documentation or case studies were linked."));
 
   // ===== Reading ease =====
@@ -760,10 +720,6 @@ export function computeContentChecks(
     `${plural(deadLinks.length, "link")} ${verb(deadLinks.length, "points", "point")} nowhere (javascript: or a bare #).`));
 
   // ===== Forms & interaction =====
-  // The form markers below come from the scraper's markdown conversion. `[Form: …]` is
-  // emitted by the current deployment; `[Input: …]` only by the newer one. Where the
-  // markers are absent entirely we cannot distinguish "no form" from "not reported", so
-  // those criteria return unclear rather than asserting a failure.
   const formMarkers = (md.match(/\[Form:/gi) ?? []).length;
   const inputMarkers = [...md.matchAll(/\[Input: type=([a-z]+)([^\]]*)\]/gi)];
 
@@ -791,11 +747,6 @@ export function computeContentChecks(
   return out;
 }
 
-/**
- * The code-tier results for one category, in the order the criteria are declared.
- * A criterion declared `source: "code"` with no implementation resolves to "unclear"
- * rather than crashing, and is excluded from scoring.
- */
 export function codeResultsFor(
   category: AssessedCategory,
   checks: Map<string, CriterionResult>
