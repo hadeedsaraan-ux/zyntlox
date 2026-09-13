@@ -166,31 +166,57 @@ export default function RoastReport({
               {labels.seoUnverifiedNotice}
             </p>
           )}
-          <div className="space-y-5">
-            {groupSeoChecks(report.seoChecks.checks).map(({ group, checks }) => (
-              <div key={group}>
-                <p className="font-mono text-[10px] tracking-widest uppercase text-[var(--muted)] opacity-70 mb-2">
-                  {SEO_GROUP_LABELS[mode][group]}
-                </p>
-                <div className="space-y-3">
-                  {checks.map((check) => (
-                    <div key={check.id} className="flex gap-2">
-                      <span
-                        className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${statusDotClass(check.status)}`}
-                      />
-                      <div>
-                        <p className="text-[var(--text)] font-semibold text-sm">
-                          {SEO_CHECK_LABELS[mode][check.id]}
-                        </p>
-                        <p className="text-[var(--muted)] text-sm">
-                          {formatSeoCheckDetail(check, mode)}
-                        </p>
+          {/* Same collapsed-by-default <details> treatment as the Design/Trust/UX
+              breakdown above, for consistency now that this section also groups its
+              checks — the tally and issue badge in the summary signal what's inside
+              without needing every group open by default. */}
+          <div className="space-y-2">
+            {groupSeoChecks(report.seoChecks.checks).map(({ group, checks }) => {
+              const met = checks.filter((c) => c.status === "pass").length;
+              const issues = checks.filter((c) => c.status !== "pass").length;
+              return (
+                <details
+                  key={group}
+                  className="group border-b border-[var(--border)] last:border-0 pb-2"
+                >
+                  <summary className="flex items-baseline justify-between gap-2 cursor-pointer list-none py-1 hover:text-[var(--amber)] transition-colors">
+                    <span className="text-[var(--text)] text-sm font-semibold">
+                      <span className="inline-block w-3 text-[var(--muted)] group-open:rotate-90 transition-transform">
+                        ›
+                      </span>
+                      {SEO_GROUP_LABELS[mode][group]}
+                    </span>
+                    <span className="flex items-baseline gap-1.5 shrink-0">
+                      {issues > 0 && (
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger)]/15 text-[var(--danger)]">
+                          {issues}
+                        </span>
+                      )}
+                      <span className="font-mono text-xs text-[var(--muted)]">
+                        {met}/{checks.length}
+                      </span>
+                    </span>
+                  </summary>
+                  <div className="space-y-3 pl-3 pt-1">
+                    {checks.map((check) => (
+                      <div key={check.id} className="flex gap-2">
+                        <span
+                          className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${statusDotClass(check.status)}`}
+                        />
+                        <div>
+                          <p className="text-[var(--text)] font-semibold text-sm">
+                            {SEO_CHECK_LABELS[mode][check.id]}
+                          </p>
+                          <p className="text-[var(--muted)] text-sm">
+                            {formatSeoCheckDetail(check, mode)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+                    ))}
+                  </div>
+                </details>
+              );
+            })}
           </div>
         </div>
       )}

@@ -13,20 +13,27 @@ const META_DESC_MAX = 160;
 //   noindex/https  — catastrophic and binary. `noindex` makes the page invisible to search
 //                    outright; missing HTTPS makes the browser label the site "Not Secure".
 //   title/viewport — the search listing's headline, and whether the page works on a phone.
-//   canonical      — deliberately near-zero. Duplicate-content risk is real for large
+//   h1/altText     — reinstated now that the scraper computes them from the rendered,
+//                    hidden-stripped page (h1 via Cheerio, altText via a live DOM read
+//                    that also confirms each image actually loaded) — see the SeoCheck
+//                    doc comment. Moderate weight: real structural/accessibility signals,
+//                    but not in the same tier as being invisible to search entirely.
+//   canonical/favicon — deliberately near-zero. Duplicate-content risk is real for large
 //                    catalogues and close to irrelevant for the small marketing sites this
 //                    tool audits; weighting it like a title tag would be dishonest.
 const WEIGHTS = {
   https: 2.0,
   noindex: 2.0,
-  title: 1.5,
-  viewport: 1.25,
-  metaDescription: 1.0,
-  socialPreview: 0.85,
-  langAttribute: 0.6,
-  zoomBlocked: 0.4,
-  canonical: 0.2,
-  favicon: 0.2,
+  title: 1.3,
+  viewport: 1.0,
+  metaDescription: 0.85,
+  h1: 0.6,
+  altText: 0.6,
+  socialPreview: 0.6,
+  langAttribute: 0.45,
+  zoomBlocked: 0.35,
+  canonical: 0.15,
+  favicon: 0.1,
 } as const;
 
 const WEIGHT_TOTAL = Object.values(WEIGHTS).reduce((sum, w) => sum + w, 0);
@@ -51,6 +58,8 @@ export function computeSeoAudit(facts: SeoFacts): SeoChecks {
     computeViewportCheck(facts),
     computeZoomBlockedCheck(facts),
     computeLangAttributeCheck(facts),
+    computeH1Check(facts),
+    computeAltTextCheck(facts),
   ];
 
   const totalDeductions = checks.reduce((sum, c) => sum + c.pointsDeducted, 0);
@@ -75,16 +84,19 @@ function computeMetaDescriptionCheck(facts: SeoFacts): SeoCheck {
     present &&
     facts.metaDescriptionLength >= META_DESC_MIN &&
     facts.metaDescriptionLength <= META_DESC_MAX;
+  const generic = facts.metaDescriptionIsGeneric;
+
+  // A platform default is worse than a badly-sized real description — it's plausible
+  // length but says nothing about the site, so it costs the same as having none.
+  const status: SeoCheck["status"] = !present || generic ? "fail" : inRange ? "pass" : "warn";
+  const pointsDeducted =
+    !present || generic ? WEIGHTS.metaDescription : inRange ? 0 : WEIGHTS.metaDescription * 0.4;
 
   return {
     id: "metaDescription",
-    status: !present ? "fail" : inRange ? "pass" : "warn",
-    pointsDeducted: !present
-      ? WEIGHTS.metaDescription
-      : inRange
-      ? 0
-      : WEIGHTS.metaDescription * 0.4,
-    values: { present, length: facts.metaDescriptionLength },
+    status,
+    pointsDeducted,
+    values: { present, length: facts.metaDescriptionLength, generic, description: facts.metaDescription },
   };
 }
 
@@ -203,5 +215,68 @@ function computeLangAttributeCheck(facts: SeoFacts): SeoCheck {
     status: present ? "pass" : "fail",
     pointsDeducted: present ? 0 : WEIGHTS.langAttribute,
     values: { present, lang: facts.langAttribute },
+  };
+}
+
+/**
+ * Only scored when `h1Count` is present — `null` means either the raw-fetch path (no
+ * rendered DOM to count at all) or an older scraper deployment. Reporting "no H1 found"
+ * in that case would be a false claim, not a finding.
+ */
+function computeH1Check(facts: SeoFacts): SeoCheck {
+  if (facts.h1Count === null) {
+    return { id: "h1", status: "pass", pointsDeducted: 0, values: { applicable: false, count: null } };
+  }
+
+  const count = facts.h1Count;
+  const status: SeoCheck["status"] = count === 1 ? "pass" : count === 0 ? "fail" : "warn";
+  const pointsDeducted = count === 0 ? WEIGHTS.h1 : count === 1 ? 0 : WEIGHTS.h1 * 0.5;
+
+  return { id: "h1", status, pointsDeducted, values: { applicable: true, count } };
+}
+
+/**
+ * Denominator excludes broken images (`naturalWidth === 0` — never actually loaded, so
+ * whether it has alt text is moot) and anything CSS-hidden (never reaches `domImages` at
+ * all, since the scraper's DOM read runs after hidden-element stripping). `alt=""` counts
+ * as handled, not missing — it's the correct, deliberate markup for a decorative image;
+ * only `hasAltAttribute === false` (no attribute at all) counts against the page.
+ *
+ * Only scored when `domImages` is present, for the same reason as the H1 check above.
+ */
+function computeAltTextCheck(facts: SeoFacts): SeoCheck {
+  if (facts.domImages === null) {
+    return { id: "altText", status: "pass", pointsDeducted: 0, values: { applicable: false, total: null } };
+  }
+
+  const countable = facts.domImages.filter((img) => img.naturalWidth > 0);
+  const missing = countable.filter((img) => !img.hasAltAttribute);
+  const filenameLike = countable.filter(
+    (img) => img.hasAltAttribute && img.alt && /\.(jpe?g|png|gif|svg|webp|bmp)$/i.test(img.alt.trim())
+  );
+
+  if (countable.length === 0) {
+    return {
+      id: "altText",
+      status: "pass",
+      pointsDeducted: 0,
+      values: { applicable: true, total: 0, missing: 0, filenameLike: 0 },
+    };
+  }
+
+  const missingRatio = missing.length / countable.length;
+  const status: SeoCheck["status"] =
+    missing.length === 0 ? "pass" : missing.length === countable.length ? "fail" : "warn";
+
+  return {
+    id: "altText",
+    status,
+    pointsDeducted: missingRatio * WEIGHTS.altText,
+    values: {
+      applicable: true,
+      total: countable.length,
+      missing: missing.length,
+      filenameLike: filenameLike.length,
+    },
   };
 }

@@ -63,6 +63,8 @@ export const SEO_CHECK_LABELS: Record<ReportMode, Record<SeoCheck["id"], string>
     socialPreview: "Open Graph Tags",
     favicon: "Favicon",
     langAttribute: "Lang Attribute",
+    h1: "H1 Heading",
+    altText: "Image Alt Text",
   },
   plain: {
     https: "Secure Connection",
@@ -75,6 +77,8 @@ export const SEO_CHECK_LABELS: Record<ReportMode, Record<SeoCheck["id"], string>
     socialPreview: "Link Sharing Preview",
     favicon: "Browser Tab Icon",
     langAttribute: "Page Language",
+    h1: "Main Heading",
+    altText: "Picture Descriptions",
   },
 };
 
@@ -92,6 +96,8 @@ export const SEO_CHECK_GROUP: Record<SeoCheck["id"], SeoCheckGroup> = {
   viewport: "device",
   zoomBlocked: "device",
   langAttribute: "device",
+  h1: "discoverability",
+  altText: "device",
 };
 
 export const SEO_GROUP_ORDER: SeoCheckGroup[] = ["discoverability", "sharing", "device"];
@@ -245,7 +251,55 @@ export function formatSeoCheckDetail(check: SeoCheck, mode: ReportMode): string 
         ? "The page doesn't say what language it's in, so screen readers may read it with the wrong accent or pronunciation."
         : "The <html> element has no lang attribute.";
 
+    case "h1": {
+      if (!check.values.applicable) {
+        return plain
+          ? "We couldn't check your page's main heading this time."
+          : "H1 count not reported by the scraper for this page.";
       }
+      const count = check.values.count as number;
+      if (count === 0) {
+        return plain
+          ? "No main heading was found on the page."
+          : "No H1 heading found on the page.";
+      }
+      if (count === 1) {
+        return plain ? "One main heading found — as expected." : "Exactly one H1 tag found.";
+      }
+      return plain
+        ? `${count} main headings were found — usually there should only be one.`
+        : `${count} H1 tags found — typically a page should have exactly one.`;
+    }
+
+    case "altText": {
+      if (!check.values.applicable) {
+        return plain
+          ? "We couldn't check your pictures' descriptions this time."
+          : "Image alt text not reported by the scraper for this page.";
+      }
+      const total = check.values.total as number;
+      const missing = check.values.missing as number;
+      const filenameLike = check.values.filenameLike as number;
+      if (total === 0) {
+        return plain ? "No pictures found on this page." : "No images found on this page.";
+      }
+      const base =
+        missing === 0
+          ? plain
+            ? `All ${total} pictures have descriptions for screen readers.`
+            : `All ${total} images have alt text.`
+          : plain
+          ? `${missing} out of ${total} pictures don't have descriptions for people using screen readers.`
+          : `${missing} of ${total} images are missing alt text.`;
+      if (filenameLike === 0) return base;
+      return (
+        base +
+        (plain
+          ? ` Also, ${filenameLike} ${filenameLike === 1 ? "picture's description is" : "pictures' descriptions are"} just a filename, which doesn't actually describe the picture.`
+          : ` ${filenameLike} additionally ${filenameLike === 1 ? "has" : "have"} filename-like alt text (e.g. "IMG_2043.jpg"), which doesn't describe the image.`)
+      );
+    }
+  }
 }
 
 export const IMPACT_LABELS: Record<

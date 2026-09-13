@@ -6,7 +6,7 @@ import {
   criterionDef,
   criterionWeight,
 } from "./criteria";
-import { CategoryAssessment, CriterionRating, CriterionResult } from "./types";
+import { CategoryAssessment, CriterionConfidence, CriterionRating, CriterionResult } from "./types";
 
 const VALID_RATINGS: CriterionRating[] = ["yes", "no", "unclear"];
 
@@ -105,10 +105,27 @@ export function scoreOf(assessments: CategoryAssessment[], category: string): nu
 }
 
 /**
+ * A "yes" carrying this confidence contributes this fraction of its weight to the
+ * "met" side, instead of the full point. `answered` is untouched — a low-confidence
+ * yes was still answered, just not fully credited — so this only ever pulls the score
+ * DOWN toward what "no" would have given, never below it, and never affects a "no" at
+ * all. Absent confidence (the ~150 other criteria) is full credit, same as always.
+ *
+ * Stripe's own demo email is the case this exists for: a real string, on their real
+ * domain, that still isn't a way to contact them. Scoring it as a flat "yes" would have
+ * given a fabricated contact channel the same credit as a real mailto: link.
+ */
+const CONFIDENCE_MULTIPLIER: Record<CriterionConfidence, number> = {
+  high: 1,
+  medium: 0.75,
+  low: 0.4,
+};
+
+/**
  * Turns a category's criterion ratings into its 0-10 score: the weighted share of
  * answerable criteria that were met.
  *
- *     score = 10 x (weight of "yes") / (weight of "yes" + weight of "no")
+ *     score = 10 x (weight of "yes", confidence-adjusted) / (weight of "yes" + weight of "no")
  *
  * "unclear" is excluded from BOTH sides rather than scored as a half-point. That removes
  * the incentive to hedge — hedging cannot move the number in either direction — and
@@ -125,7 +142,9 @@ export function computeCategoryScore(criteria: CriterionResult[]): number {
     const def = criterionDef(c.id);
     const weight = def ? criterionWeight(def) : 1;
     answered += weight;
-    if (c.rating === "yes") met += weight;
+    if (c.rating === "yes") {
+      met += weight * (c.confidence ? CONFIDENCE_MULTIPLIER[c.confidence] : 1);
+    }
   }
 
   if (answered === 0) return 0;
