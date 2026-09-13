@@ -305,6 +305,18 @@ export interface ComputeContentChecksOptions {
    * `findStructuredAddress`. The highest-confidence signal `physicalAddress` can have.
    */
   structuredAddress?: string | null;
+  /**
+   * DOM-level commerce signals from the scraper (schema.org JSON-LD type, and presence
+   * of add-to-cart/buy-now/checkout buttons) — used to tell a genuine storefront apart
+   * from a content/news site that merely mentions dollar amounts in its copy (e.g. a
+   * news article about a "$40 billion deal"). A regex only sees text and cannot make
+   * this distinction; the browser can. See the "Commerce & guarantees" section below.
+   */
+  commerceSignals?: {
+    hasProductSchema: boolean;
+    hasNewsSchema: boolean;
+    hasCommerceButtons: boolean;
+  } | null;
 }
 
 /**
@@ -320,6 +332,11 @@ export function computeContentChecks(
   const { md, links, words, headings } = s;
   const siteUrl = options?.siteUrl;
   const structuredAddress = options?.structuredAddress ?? null;
+  const commerceSignals = options?.commerceSignals ?? null;
+  const isLikelyCommerceSite = Boolean(
+    commerceSignals?.hasProductSchema || commerceSignals?.hasCommerceButtons
+  );
+  const isLikelyContentSite = Boolean(commerceSignals?.hasNewsSchema && !isLikelyCommerceSite);
 
   // ===== Contact & location =====
   //
@@ -443,27 +460,46 @@ export function computeContentChecks(
     "No copyright notice was found anywhere on the page."));
 
   // ===== Commerce & guarantees =====
-  const priceMatches = [...md.matchAll(CURRENCY_TOKEN)].map((m) => m[0]);
-  const pricingLink = linkMatching(links, /\bpricing\b|\bplans\b|\bprice\b/i);
-  add(result("pricingSignals", priceMatches.length > 0 || Boolean(pricingLink),
-    priceMatches.length ? `Prices shown on the page (e.g. "${priceMatches[0].trim()}").` : `A pricing link was found: "${pricingLink?.text}"`,
-    "No prices and no pricing page link were found."));
+  //
+  // These checks assume the page belongs to something that sells directly — but a
+  // regex only sees text, and text alone cannot tell a news site's "$40 billion deal"
+  // apart from an actual product price. When the scraper's DOM-level signals say this
+  // is a content/news site (schema.org NewsArticle/NewsMediaOrganization) and NOT a
+  // storefront (no Product/Offer schema, no add-to-cart/buy-now/checkout button), the
+  // whole section is marked "unclear" (excluded from scoring) instead of reporting a
+  // string of false-negative "no"s for checks that were never relevant to begin with.
+  // Verified via console on nytimes.com: NewsArticle/NewsMediaOrganization schema
+  // present, zero Product/Offer schema, zero commerce buttons in the DOM.
+  if (isLikelyContentSite) {
+    add(unanswerable("pricingSignals", "This appears to be a content/news site, not a storefront — pricing checks don't apply."));
+    add(unanswerable("currencyConsistent", "This appears to be a content/news site, not a storefront — pricing checks don't apply."));
+    add(unanswerable("guaranteeLanguage", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
+    add(unanswerable("riskReversal", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
+    add(unanswerable("paymentMethods", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
+    add(unanswerable("securityAssurance", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
+  } else {
+    const priceMatches = [...md.matchAll(CURRENCY_TOKEN)].map((m) => m[0]);
+    const pricingLink = linkMatching(links, /\bpricing\b|\bplans\b|\bprice\b/i);
+    add(result("pricingSignals", priceMatches.length > 0 || Boolean(pricingLink),
+      priceMatches.length ? `Prices shown on the page (e.g. "${priceMatches[0].trim()}").` : `A pricing link was found: "${pricingLink?.text}"`,
+      "No prices and no pricing page link were found."));
 
-  const symbols = new Set(priceMatches.map((p) => (p.match(/[$£€¥₹]/) ?? [""])[0]).filter(Boolean));
-  add(priceMatches.length === 0
-    ? unanswerable("currencyConsistent", "No prices appear on the page, so currency consistency does not apply.")
-    : result("currencyConsistent", symbols.size <= 1,
-        `All prices use a single currency.`,
-        `Prices mix ${symbols.size} currency symbols (${[...symbols].join(" ")}), which is easy to misread.`));
+    const symbols = new Set(priceMatches.map((p) => (p.match(/[$£€¥₹]/) ?? [""])[0]).filter(Boolean));
+    add(priceMatches.length === 0
+      ? unanswerable("currencyConsistent", "No prices appear on the page, so currency consistency does not apply.")
+      : result("currencyConsistent", symbols.size <= 1,
+          `All prices use a single currency.`,
+          `Prices mix ${symbols.size} currency symbols (${[...symbols].join(" ")}), which is easy to misread.`));
 
-  add(textCheck("guaranteeLanguage", md, /\b(money.back|satisfaction guarantee|guarantee[ds]?|warranty|warranties)\b/i,
-    "Guarantee mentioned", "No guarantee, warranty or money-back promise was mentioned."));
-  add(textCheck("riskReversal", md, /\b(free trial|free quote|free consultation|no obligation|free demo|free sample|cancel anytime|no credit card)\b/i,
-    "Low-risk offer", "Nothing on the page lowers the risk of getting in touch — no free trial, quote or consultation."));
-  add(textCheck("paymentMethods", md, /\b(visa|mastercard|amex|american express|paypal|apple pay|google pay|stripe|klarna|afterpay|credit card)\b/i,
-    "Payment methods named", "No accepted payment methods were named."));
-  add(textCheck("securityAssurance", md, /\b(secure (?:payment|checkout|ordering)|ssl|encrypt(?:ed|ion)|pci|data protection|gdpr)\b/i,
-    "Security assurance", "Nothing reassures visitors that payment or data handling is secure."));
+    add(textCheck("guaranteeLanguage", md, /\b(money.back|satisfaction guarantee|guarantee[ds]?|warranty|warranties)\b/i,
+      "Guarantee mentioned", "No guarantee, warranty or money-back promise was mentioned."));
+    add(textCheck("riskReversal", md, /\b(free trial|free quote|free consultation|no obligation|free demo|free sample|cancel anytime|no credit card)\b/i,
+      "Low-risk offer", "Nothing on the page lowers the risk of getting in touch — no free trial, quote or consultation."));
+    add(textCheck("paymentMethods", md, /\b(visa|mastercard|amex|american express|paypal|apple pay|google pay|stripe|klarna|afterpay|credit card)\b/i,
+      "Payment methods named", "No accepted payment methods were named."));
+    add(textCheck("securityAssurance", md, /\b(secure (?:payment|checkout|ordering)|ssl|encrypt(?:ed|ion)|pci|data protection|gdpr)\b/i,
+      "Security assurance", "Nothing reassures visitors that payment or data handling is secure."));
+  }
 
   // ===== Social & external presence =====
   const socialLinks = links.filter((l) => SOCIAL_HOSTS.test(l.href));
