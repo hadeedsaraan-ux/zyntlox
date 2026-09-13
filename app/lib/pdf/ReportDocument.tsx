@@ -483,9 +483,20 @@ export default function ReportDocument({
             {!report.seoChecks.isVerified && (
               <Text style={styles.noticeBanner}>{labels.seoUnverifiedNotice}</Text>
             )}
-            {groupSeoChecks(report.seoChecks.checks).map(({ group, checks }) => (
+            {groupSeoChecks(report.seoChecks.checks).map(({ group, checks }) => {
+              const met = checks.filter((c) => c.status === "pass").length;
+              const issues = checks.filter((c) => c.status !== "pass").length;
+              return (
               <View key={group}>
-                <Text style={styles.seoGroupLabel}>{SEO_GROUP_LABELS[mode][group]}</Text>
+                <View style={styles.criterionSubgroupHeader}>
+                  <Text style={styles.seoGroupLabel}>{SEO_GROUP_LABELS[mode][group]}</Text>
+                  <Text
+                    style={[styles.criterionSubgroupTally, issues > 0 ? { color: COLORS.danger } : {}]}
+                  >
+                    {issues > 0 ? `${issues} issue${issues > 1 ? "s" : ""} · ` : ""}
+                    {met}/{checks.length}
+                  </Text>
+                </View>
                 {checks.map((check) => (
                   <View key={check.id} style={styles.seoCheckRow} wrap={false}>
                     <View
@@ -500,7 +511,8 @@ export default function ReportDocument({
                   </View>
                 ))}
               </View>
-            ))}
+              );
+            })}
           </View>
         )}
 

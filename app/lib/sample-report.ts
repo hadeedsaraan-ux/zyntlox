@@ -21,6 +21,7 @@ const SAMPLE_FACTS: SeoFacts = {
   metaDescription:
     "Small-batch sourdough, pastries and celebration cakes baked fresh every morning in Fitzroy.",
   metaDescriptionLength: 91,
+  metaDescriptionIsGeneric: false,
   viewportPresent: true,
   viewportContent: "width=device-width, initial-scale=1",
   viewportBlocksZoom: false,
@@ -33,6 +34,10 @@ const SAMPLE_FACTS: SeoFacts = {
   ogImage: null,
   langAttribute: "en",
   faviconPresent: false,
+  // No live browser behind the sample data — matches the raw-fetch path's "cannot know
+  // this at all" state, exercised the same way a real unverified report would be.
+  h1Count: null,
+  domImages: null,
 };
 
 /** Stands in for the scraper's markdown, so the code-tier checks run for real. */
@@ -167,7 +172,11 @@ const SAMPLE_AI_ANSWERS = {
 };
 
 const sampleSeoChecks = computeSeoAudit(SAMPLE_FACTS);
-const sampleContentChecks = computeContentChecks(SAMPLE_MARKDOWN);
+// Matches sampleUrl (declared below) with a scheme added — hostnameOf() needs an
+// absolute URL to parse, and the exported display string is deliberately bare.
+const sampleContentChecks = computeContentChecks(SAMPLE_MARKDOWN, {
+  siteUrl: "https://bellas-artisan-bakery.com",
+});
 
 const sampleAssessments = parseAssessments(SAMPLE_AI_ANSWERS, sampleContentChecks);
 if (!sampleAssessments) {

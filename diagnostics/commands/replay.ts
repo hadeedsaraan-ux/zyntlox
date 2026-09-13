@@ -127,7 +127,11 @@ export async function replay(args: {
   // The code tier is deterministic and the fixture is frozen, so this is computed once.
   // Replay must apply it exactly as production does, or the scores it reports would be
   // AI-tier-only and would not correspond to any number a user ever sees.
-  const contentChecks = computeContentChecks(fixture.fullMarkdown ?? fixture.markdown);
+  const contentChecks = computeContentChecks(fixture.fullMarkdown ?? fixture.markdown, {
+    siteUrl: fixture.url,
+    domLinks: fixture.extractedData.domLinks,
+    structuredAddress: fixture.extractedData.structuredAddress,
+  });
 
   const currentSha = sha256(promptText);
   const promptDrift = currentSha !== fixture.promptSha256;

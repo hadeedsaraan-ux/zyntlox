@@ -46,7 +46,11 @@ export async function POST(request: NextRequest) {
       // Runs on the UNCAPPED markdown — footer links are what the prompt cap truncates.
       // siteUrl is passed so externalLinkBalance can compare hostnames instead of just
       // checking whether a link is an absolute URL — see contentChecks.ts.
-      const contentChecks = computeContentChecks(fullMarkdown, url);
+      const contentChecks = computeContentChecks(fullMarkdown, {
+        siteUrl: url,
+        domLinks: extractedData.domLinks,
+        structuredAddress: extractedData.structuredAddress,
+      });
 
       // Prompt construction lives in lib/prompts.ts so the diagnostics harness can
       // replay the exact prompt production sends, rather than a copy that can drift.

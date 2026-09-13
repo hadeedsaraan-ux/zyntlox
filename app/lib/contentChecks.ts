@@ -1,5 +1,5 @@
 import { AssessedCategory, codeCriteria } from "./criteria";
-import { CriterionResult } from "./types";
+import { CriterionConfidence, CriterionResult, DomLink } from "./types";
 
 /**
  * The code tier: criteria answered deterministically from the page's markdown, never by
@@ -108,7 +108,22 @@ function collectHeadings(md: string): { level: number; text: string }[] {
   return out;
 }
 
-function analyse(markdown: string | null): PageStats {
+/**
+ * Prefers the scraper's DOM-computed link inventory (`domLinks`) over parsing markdown,
+ * when present — falls back to `parseLinks` otherwise (an older scraper deployment, or
+ * the raw-fetch path, which has no live browser to compute one at all). This is also
+ * what fixes the SVG-icon-link bug for every check downstream: a markdown regex could
+ * never recover an accessible name from an icon the scraper had already flattened to the
+ * literal text "[SVG Icon]", but the browser's own accessible-name computation can.
+ */
+function linksFor(markdown: string, domLinks: DomLink[] | null | undefined): MarkdownLink[] {
+  if (domLinks && domLinks.length > 0) {
+    return domLinks.map((l) => ({ text: l.accessibleName, href: l.href }));
+  }
+  return parseLinks(markdown);
+}
+
+function analyse(markdown: string | null, domLinks: DomLink[] | null | undefined): PageStats {
   const md = markdown ?? "";
   const prose = proseOf(md);
   const words = prose.split(/\s+/).filter(Boolean).length;
@@ -116,13 +131,23 @@ function analyse(markdown: string | null): PageStats {
   return {
     md,
     prose,
-    links: parseLinks(md),
+    links: linksFor(md, domLinks),
     words,
     sentences: prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 1),
     paragraphs: prose.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.split(/\s+/).length > 3),
     headings: collectHeadings(md),
     hasInputMarkers: /\[Input:/i.test(md),
   };
+}
+
+/** Phrases suggesting a nearby fact is genuinely offered as a way to reach the business,
+ *  rather than an incidental string elsewhere on the page (see CriterionConfidence). */
+const CONTACT_CONTEXT = /\bcontact\b|\bget in touch\b|\breach us\b|\bcall us\b|\bemail us\b|\bfind us\b|\bvisit us\b/i;
+
+/** The first paragraph containing `needle`, or null. A heuristic, not an exact locator —
+ *  good enough to decide a confidence tier, not load-bearing for anything stricter. */
+function paragraphContaining(paragraphs: string[], needle: string): string | null {
+  return paragraphs.find((p) => p.includes(needle)) ?? null;
 }
 
 // --- shared patterns ---------------------------------------------------------
@@ -177,6 +202,22 @@ const COMING_SOON = /\b(coming soon|under construction|page not found|404 error|
 
 function result(id: string, met: boolean, yesText: string, noText: string): CriterionResult {
   return { id, rating: met ? "yes" : "no", evidence: met ? yesText : noText };
+}
+
+/**
+ * Like `result`, but for the handful of "does this business offer X" checks where a
+ * "yes" can be more or less certain — see `CriterionConfidence`. `confidence: null` means
+ * nothing was found at all (renders as "no"); otherwise the tier is attached to a "yes"
+ * so `computeCategoryScore` can weight it as partial credit rather than a full point.
+ */
+function tieredResult(
+  id: string,
+  confidence: CriterionConfidence | null,
+  yesText: string,
+  noText: string
+): CriterionResult {
+  if (confidence === null) return { id, rating: "no", evidence: noText };
+  return { id, rating: "yes", evidence: yesText, confidence };
 }
 
 /**
@@ -246,33 +287,87 @@ function absenceCheck(
 
 // --- the checks --------------------------------------------------------------
 
+export interface ComputeContentChecksOptions {
+  /**
+   * The URL being audited. Used to resolve which links are genuinely off-site —
+   * without it, externalLinkBalance falls back to the old (less accurate) "is this an
+   * absolute URL at all" test. Pass the same `url` the route already has.
+   */
+  siteUrl?: string | null;
+  /**
+   * The scraper's DOM-computed link inventory, when available — preferred over parsing
+   * markdown for every link-based check (see `linksFor`). `null`/absent falls back to
+   * `parseLinks`.
+   */
+  domLinks?: DomLink[] | null;
+  /**
+   * An address found in structured data (JSON-LD/microdata) — see `siteData.ts`'s
+   * `findStructuredAddress`. The highest-confidence signal `physicalAddress` can have.
+   */
+  structuredAddress?: string | null;
+}
+
 /**
  * @param markdown The page's full, untruncated markdown.
- * @param siteUrl The URL being audited. Used to resolve which links are genuinely
- *   off-site — without it, externalLinkBalance falls back to the old (less accurate)
- *   "is this an absolute URL at all" test. Pass the same `url` the route already has.
  */
 export function computeContentChecks(
   markdown: string | null,
-  siteUrl?: string | null
+  options?: ComputeContentChecksOptions
 ): Map<string, CriterionResult> {
   const out = new Map<string, CriterionResult>();
-  const s = analyse(markdown);
+  const s = analyse(markdown, options?.domLinks);
   const add = (r: CriterionResult) => out.set(r.id, r);
   const { md, links, words, headings } = s;
+  const siteUrl = options?.siteUrl;
+  const structuredAddress = options?.structuredAddress ?? null;
 
   // ===== Contact & location =====
+  //
+  // Confidence tiers exist because a regex finding an email/phone/address-shaped string
+  // is not the same claim as finding a real way to contact the business — Stripe's own
+  // demo email ("jane.diaz@stripe.com", a real string on their real domain, not a way to
+  // reach them) is exactly the case this distinguishes. A plain-text match is "medium" if
+  // it sits in a paragraph that also talks about contacting the business, "low" otherwise
+  // — either way it scores as partial credit, never the same as an actual mailto:/tel:
+  // link or a structured-data address. See CriterionConfidence / computeCategoryScore.
+
   const mailto = links.find((l) => /^mailto:/i.test(l.href));
-  const literalEmail = md.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/);
-  add(result("contactEmail", Boolean(mailto || literalEmail),
-    `Email found: ${mailto ? mailto.href.replace(/^mailto:/i, "") : literalEmail?.[0]}`,
-    "No email address or mailto: link found in the page text."));
+  const literalEmailMatch = mailto ? null : s.prose.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/);
+  const emailParagraph = literalEmailMatch ? paragraphContaining(s.paragraphs, literalEmailMatch[0]) : null;
+  const emailConfidence: CriterionConfidence | null = mailto
+    ? "high"
+    : literalEmailMatch
+    ? emailParagraph && CONTACT_CONTEXT.test(emailParagraph)
+      ? "medium"
+      : "low"
+    : null;
+  add(tieredResult(
+    "contactEmail",
+    emailConfidence,
+    mailto
+      ? `Email link found: ${mailto.href.replace(/^mailto:/i, "")}`
+      : `Email address found in the page text: ${literalEmailMatch?.[0]}${emailConfidence === "low" ? " (not a contact link — unverified)" : ""}`,
+    "No email address or mailto: link found in the page text."
+  ));
 
   const tel = links.find((l) => /^tel:/i.test(l.href));
-  const literalPhone = md.match(PHONE_HINT);
-  add(result("contactPhone", Boolean(tel || literalPhone),
-    `Phone found: ${tel ? tel.href.replace(/^tel:/i, "") : literalPhone?.[0].trim()}`,
-    "No phone number or tel: link found in the page text."));
+  const literalPhoneMatch = tel ? null : s.prose.match(PHONE_HINT);
+  const phoneParagraph = literalPhoneMatch ? paragraphContaining(s.paragraphs, literalPhoneMatch[0]) : null;
+  const phoneConfidence: CriterionConfidence | null = tel
+    ? "high"
+    : literalPhoneMatch
+    ? phoneParagraph && CONTACT_CONTEXT.test(phoneParagraph)
+      ? "medium"
+      : "low"
+    : null;
+  add(tieredResult(
+    "contactPhone",
+    phoneConfidence,
+    tel
+      ? `Phone link found: ${tel.href.replace(/^tel:/i, "")}`
+      : `Phone number found in the page text: ${literalPhoneMatch?.[0].trim()}${phoneConfidence === "low" ? " (not a contact link — unverified)" : ""}`,
+    "No phone number or tel: link found in the page text."
+  ));
 
   add(linkCheck("contactRoute", links, /\bcontact|get in touch|reach us\b/i,
     "Contact link", "No link to a contact page or form was found."));
@@ -286,20 +381,36 @@ export function computeContentChecks(
     ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 80)
     : "";
   const addressConfirmed = Boolean(addressMatch) && POSTCODE_HINT.test(addressContext);
-  add(result("physicalAddress", addressConfirmed,
-    `A street address appears on the page: "${addressMatch?.[0].trim()}"`,
-    "No physical or postal address was found."));
+  const addressParagraph = addressConfirmed ? paragraphContaining(s.paragraphs, addressMatch![0]) : null;
+  const addressConfidence: CriterionConfidence | null = structuredAddress
+    ? "high"
+    : addressConfirmed
+    ? addressParagraph && CONTACT_CONTEXT.test(addressParagraph)
+      ? "medium"
+      : "low"
+    : null;
+  add(tieredResult(
+    "physicalAddress",
+    addressConfidence,
+    structuredAddress
+      ? `A structured (schema.org/JSON-LD) address was found: "${structuredAddress}"`
+      : `A street address appears on the page: "${addressMatch?.[0].trim()}"${addressConfidence === "low" ? " (unverified — plain text, no supporting context)" : ""}`,
+    "No physical or postal address was found."
+  ));
 
   add(linkCheck("mapLink", links, MAP_HOSTS, "Map or directions link",
     "No map or directions link was found."));
 
+  // Tightened: dropped the bare "opening hours"/"opening times" alternative, which
+  // matched a LABEL ("see our opening hours") with no actual hours in it at all. Both
+  // remaining alternatives require two real endpoints — a day range or a time range.
   add(textCheck("businessHours", md,
-    /\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s*[-–—]\s*(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|\bopen(?:ing)?\s+(?:hours|times)\b|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\s*[-–—]\s*\d{1,2}(?::\d{2})?\s?(?:am|pm)/i,
+    /\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s*[-–—]\s*(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\s*[-–—]\s*\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/i,
     "Opening hours stated", "No opening hours or availability were found."));
 
   const channels = [
-    Boolean(mailto || literalEmail),
-    Boolean(tel || literalPhone),
+    Boolean(mailto || literalEmailMatch),
+    Boolean(tel || literalPhoneMatch),
     Boolean(linkMatching(links, /\bcontact\b/i)),
     links.some((l) => SOCIAL_HOSTS.test(l.href)),
   ].filter(Boolean).length;
@@ -320,12 +431,16 @@ export function computeContentChecks(
     "No refund, returns or cancellation information was found."));
   add(linkCheck("shippingInfo", links, /\bshipping|delivery|postage|fulfilment|fulfillment\b/i,
     "Shipping link", "No delivery or shipping information was found."));
-  // Widened from `\d{0,4}` to `[^\n]{0,40}` for the EVIDENCE text only — the previous
-  // version could capture just "37" out of "© 37signals LLC" because \d{0,4} stopped at
-  // the first non-digit. The presence/absence result was never wrong; only the snippet
-  // shown as evidence was confusing. This grabs the fuller, more legible phrase instead.
-  add(textCheck("copyrightNotice", md, /(?:©|&copy;|\(c\)|copyright)[^\n]{0,40}/i,
-    "Copyright notice present", "No copyright notice was found anywhere on the page."));
+  // Shared with copyrightCurrent below — both used to run independent regexes with
+  // different windows (40 chars here, 15 there), so a copyright line like "Copyright ©
+  // All Rights Reserved 2024" (24 non-digit characters before the year) could pass this
+  // check while copyrightCurrent's narrower window missed the year entirely and reported
+  // no year found. Extracting the year FROM this same matched block instead makes that
+  // disagreement structurally impossible — there is only one source of truth now.
+  const copyrightBlock = md.match(/(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/i);
+  add(result("copyrightNotice", Boolean(copyrightBlock),
+    `Copyright notice present: "${copyrightBlock?.[0].trim()}"`,
+    "No copyright notice was found anywhere on the page."));
 
   // ===== Commerce & guarantees =====
   const priceMatches = [...md.matchAll(CURRENCY_TOKEN)].map((m) => m[0]);
@@ -384,7 +499,11 @@ export function computeContentChecks(
 
   // ===== Freshness & maintenance =====
   const currentYear = new Date().getFullYear();
-  const copyYears = [...md.matchAll(/(?:©|&copy;|\(c\)|copyright)[^0-9]{0,15}((?:19|20)\d{2})/gi)].map((m) => Number(m[1]));
+  // Extracted from the SAME copyrightBlock computed above, not a fresh scan of `md` —
+  // see the comment on copyrightNotice for why that's the fix, not just a convenience.
+  const copyYears = copyrightBlock
+    ? [...copyrightBlock[0].matchAll(/(19|20)\d{2}/g)].map((m) => Number(m[0]))
+    : [];
   const newest = copyYears.length ? Math.max(...copyYears) : null;
   add(result("copyrightCurrent", newest !== null && currentYear - newest <= 1,
     `The copyright notice reads ${newest}, which is current.`,

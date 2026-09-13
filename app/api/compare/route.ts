@@ -44,7 +44,11 @@ interface SiteAssessment {
  */
 async function assessSite(site: Extract<SiteDataResult, { ok: true }>, url: string): Promise<SiteAssessment> {
   const seoChecks = computeSeoAudit(site.extractedData);
-  const contentChecks = computeContentChecks(site.fullMarkdown);
+  const contentChecks = computeContentChecks(site.fullMarkdown, {
+    siteUrl: url,
+    domLinks: site.extractedData.domLinks,
+    structuredAddress: site.extractedData.structuredAddress,
+  });
 
   const parts = buildRoastParts({
     extractedData: site.extractedData,
