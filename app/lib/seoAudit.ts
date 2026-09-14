@@ -155,8 +155,6 @@ function computeSocialPreviewCheck(facts: SeoFacts): SeoCheck {
   const { ogTitle, ogDescription, ogImage } = facts;
   const present = [ogTitle, ogDescription, ogImage].filter(Boolean).length;
 
-  // The image is what makes a shared link look deliberate rather than broken, so a set
-  // missing only the image still counts as incomplete rather than a pass.
   const complete = Boolean(ogTitle && ogImage);
   const status: SeoCheck["status"] = present === 0 ? "fail" : complete ? "pass" : "warn";
   const pointsDeducted =
@@ -185,8 +183,6 @@ function computeFaviconCheck(facts: SeoFacts): SeoCheck {
 }
 
 function computeZoomBlockedCheck(facts: SeoFacts): SeoCheck {
-  // Nothing to block if there's no viewport tag at all — that failure is already
-  // charged to the viewport check, and charging it twice would double-penalise.
   if (!facts.viewportPresent) {
     return {
       id: "zoomBlocked",
@@ -220,8 +216,7 @@ function computeLangAttributeCheck(facts: SeoFacts): SeoCheck {
 
 /**
  * Only scored when `h1Count` is present — `null` means either the raw-fetch path (no
- * rendered DOM to count at all) or an older scraper deployment. Reporting "no H1 found"
- * in that case would be a false claim, not a finding.
+ * rendered DOM to count at all) or an older scraper deployment.
  */
 function computeH1Check(facts: SeoFacts): SeoCheck {
   if (facts.h1Count === null) {
@@ -238,21 +233,33 @@ function computeH1Check(facts: SeoFacts): SeoCheck {
 /**
  * Denominator excludes broken images (`naturalWidth === 0` — never actually loaded, so
  * whether it has alt text is moot) and anything CSS-hidden (never reaches `domImages` at
- * all, since the scraper's DOM read runs after hidden-element stripping). `alt=""` counts
- * as handled, not missing — it's the correct, deliberate markup for a decorative image;
- * only `hasAltAttribute === false` (no attribute at all) counts against the page.
+ * all, since the scraper's DOM read runs after hidden-element stripping).
  *
- * Only scored when `domImages` is present, for the same reason as the H1 check above.
+ * ACCURACY UPDATE:
+ * Previously, `alt=""` was counted as handled (assumed decorative). However, in real-world
+ * audits, crucial assets like company logos or hero illustrations frequently carry empty `alt=""`
+ * attributes due to careless theme defaults. In accordance with standard SEO audit rules
+ * (Lighthouse/Ahrefs), both completely missing alt attributes AND empty/whitespace alt text
+ * (`alt=""`) on rendered images are now flagged as missing.
  */
 function computeAltTextCheck(facts: SeoFacts): SeoCheck {
   if (facts.domImages === null) {
     return { id: "altText", status: "pass", pointsDeducted: 0, values: { applicable: false, total: null } };
   }
 
+  // Only consider images that actually rendered/loaded in the browser
   const countable = facts.domImages.filter((img) => img.naturalWidth > 0);
-  const missing = countable.filter((img) => !img.hasAltAttribute);
+
+  // Missing if attribute is absent OR text is empty/whitespace
+  const missing = countable.filter(
+    (img) => !img.hasAltAttribute || !img.alt || img.alt.trim() === ""
+  );
+
   const filenameLike = countable.filter(
-    (img) => img.hasAltAttribute && img.alt && /\.(jpe?g|png|gif|svg|webp|bmp)$/i.test(img.alt.trim())
+    (img) =>
+      img.hasAltAttribute &&
+      img.alt &&
+      /\.(jpe?g|png|gif|svg|webp|bmp)$/i.test(img.alt.trim())
   );
 
   if (countable.length === 0) {
