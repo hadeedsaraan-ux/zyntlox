@@ -39,24 +39,16 @@ const SCRAPER_TIMEOUT_MS = 60000;
 const MAX_MARKDOWN_CHARS = 24000;
 
 /**
- * Screenshot budget, expressed in Gemini's own units.
- *
- * Gemini bills images by tiling them into 768x768 crops at 258 tokens each. A raw
- * full-page capture (1280 x 9198 on Smashing Magazine) is 2 x 12 = 24 tiles, ~6,192
- * tokens — by far the largest single item in the prompt.
- *
- * Downscaling to 768 wide makes it 1 tile across instead of 2, halving the cost while
- * keeping the ENTIRE page visible. Cropping to the same budget would instead discard
- * two-thirds of the page, which is the part of the input the design criteria actually
- * judge. Fine detail is the acceptable loss here: the model reads copy from the markdown,
- * and the screenshot is there for layout, spacing, colour and hierarchy.
- *
- * The height cap is the backstop for pathologically long pages (infinite-scroll feeds
- * capture at 40,000px+), where the tail is repetitive and the top carries the signal.
+ * Screenshot budget and sizing configuration.
+ * Downscaling to 768 wide makes it 1 tile across instead of 2, halving token costs.
+ * 
+ * NOTE: SCREENSHOT_MAX_HEIGHT is expanded to 35,000px to capture the full page down
+ * to the footer. The previous 6,144px cap was prematurely cutting off footers on long pages,
+ * causing false negatives for legal, privacy, and navigation links.
  */
 const SCREENSHOT_TILE_PX = 768;
 const SCREENSHOT_MAX_WIDTH = SCREENSHOT_TILE_PX; // 1 tile across
-const SCREENSHOT_MAX_HEIGHT = SCREENSHOT_TILE_PX * 8; // 8 tiles down => <=2,064 tokens
+const SCREENSHOT_MAX_HEIGHT = 35000; // Expanded to ensure full-page captures reach the footer
 
 /**
  * Brings a full-page capture inside the tile budget above. Returns the input unchanged if
@@ -274,21 +266,13 @@ function viewportBlocksZoom(viewportContent: string | null): boolean {
 /**
  * Extracts every fact the checks need. Scoped to `<head>` (plus `<html lang>` and the URL
  * scheme) — nothing here walks the document body.
- *
- * That scoping is what makes these numbers trustworthy. Head tags are server-rendered even
- * by client-side SPAs, because crawlers and social-card scrapers never run JavaScript; body
- * content on the raw-fetch path may not exist yet, which is why the old alt-text/H1/link
- * counts were the least reliable figures in the report.
  */
 function extractSeoFactsFromHtml(
   html: string,
   hasHttps: boolean,
   dataSource: ExtractedSiteData["dataSource"],
-  /** From the scraper's separate Cheerio/page.evaluate() passes — see the SeoFacts and DomImage/DomLink doc comments for why these two live outside the head-only scan. */
   domFacts: { h1Count: number | null; domImages: DomImage[] | null; domLinks: DomLink[] | null }
 ): ExtractedSiteData {
-  // Confine tag scanning to <head>. A stray <meta> or <title> inside an inlined SVG or a
-  // JSON blob in the body would otherwise be read as the page's own metadata.
   const headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i);
   const head = headMatch ? headMatch[1] : html;
 
@@ -299,12 +283,10 @@ function extractSeoFactsFromHtml(
   const viewportContent = findMetaContent(head, "viewport");
   const canonicalUrl = findLinkHref(head, "canonical");
 
-  // `googlebot` overrides `robots` for Google specifically; a noindex in either counts.
   const robotsMeta = findMetaContent(head, "robots");
   const googlebotMeta = findMetaContent(head, "googlebot");
   const robotsDirectives = [robotsMeta, googlebotMeta].filter(Boolean).join(", ") || null;
 
-  // The one tag outside <head> we read — it lives on the root <html> element.
   const htmlTag = html.match(/<html\b[^>]*>/i);
   const langAttribute = htmlTag ? parseAttributes(htmlTag[0]).lang?.trim() || null : null;
 
@@ -339,25 +321,17 @@ function extractSeoFactsFromHtml(
     structuredAddress: findStructuredAddress(html),
     detectedStack: detectStackFromHtml(html),
     dataSource,
-    // Head tags can still be set client-side (react-helmet and friends), so the rendered
-    // DOM remains the more trustworthy source even though the gap is now much narrower.
     isVerified: dataSource === "scraper-html",
   };
 }
 
 interface ScraperResult {
   screenshotBase64: string | null;
-  /** Non-fatal note from the scraper, e.g. a page that did not finish navigating. */
   warning: string | null;
-  /** Capped copy, sized for the prompt. */
   markdown: string | null;
-  /** Uncapped copy, for the deterministic content checks. See fullMarkdown below. */
   fullMarkdown: string | null;
-  /** Present once the scraper returns the rendered DOM; preferred over a raw fetch. */
   html: string | null;
-  /** From the scraper's Cheerio metadata pass (over the rendered, hidden-stripped page). */
   h1Count: number | null;
-  /** From the scraper's page.evaluate() DOM read. `null` on an older scraper deployment. */
   domImages: DomImage[] | null;
   domLinks: DomLink[] | null;
 }
@@ -376,11 +350,6 @@ function isDomLinkLike(value: unknown): value is DomLink {
   return typeof value === "object" && value !== null && "href" in value && "accessibleName" in value;
 }
 
-/**
- * Calls our scraper service: one headless-Chromium page load produces the screenshot,
- * the markdown, and (once exposed) the rendered HTML — so all three describe the same
- * page state. Scraping twice could let the screenshot and the SEO facts disagree.
- */
 async function fetchFromScraper(
   url: string
 ): Promise<{ ok: true; data: ScraperResult } | { ok: false; reason: string }> {
@@ -388,10 +357,6 @@ async function fetchFromScraper(
   const timeoutId = setTimeout(() => controller.abort(), SCRAPER_TIMEOUT_MS);
 
   try {
-    // The scraper caps the capture at this height, which saves the capture time and the
-    // response bytes as well as the tokens. capScreenshot() below still runs: it is the
-    // backstop for a scraper deployment that predates maxHeight support, and it also
-    // downscales to the tile width, which the cap alone does not do.
     const params = new URLSearchParams({
       url,
       maxHeight: String(SCREENSHOT_MAX_HEIGHT),
@@ -409,7 +374,6 @@ async function fetchFromScraper(
       return { ok: false, reason: "Scraper returned a non-JSON body" };
     }
 
-    // The screenshot arrives as a data URI; Gemini's inline_data wants bare base64.
     const rawScreenshot = typeof json.screenshot === "string" ? json.screenshot : null;
     let screenshotBase64 = rawScreenshot
       ? rawScreenshot.replace(/^data:image\/\w+;base64,/, "")
@@ -471,23 +435,14 @@ export type SiteDataResult =
       ok: true;
       extractedData: ExtractedSiteData;
       screenshotBase64: string | null;
-      /** Clean page text for the AI's content-dependent judgments, capped for the prompt. */
       markdown: string | null;
-      /**
-       * The SAME text, uncapped. The deterministic content checks must run against this,
-       * never the capped copy: footer links — privacy, terms, contact, copyright — are
-       * exactly what falls off the end, so checking the truncated text would report them
-       * missing on precisely the sites with the most content.
-       */
       fullMarkdown: string | null;
       timings: SiteDataTimings;
     }
   | { ok: false; error: string };
 
 export interface FetchSiteDataOptions {
-  /** DEV/DIAGNOSTICS ONLY. Skip the scraper and use a raw HTML fetch only. */
   forceRawFetch?: boolean;
-  /** DEV/DIAGNOSTICS ONLY. Skip the screenshot/markdown call entirely. */
   skipScraper?: boolean;
 }
 
@@ -545,7 +500,6 @@ export async function fetchSiteData(
     }
   }
 
-  // Preferred path: the scraper's rendered DOM, which has JS-loaded content.
   if (renderedHtml) {
     return {
       ok: true,
@@ -561,9 +515,6 @@ export async function fetchSiteData(
     };
   }
 
-  // Interim path until the scraper exposes `html`: fetch the markup ourselves. Markdown
-  // cannot substitute here — it strips meta tags, alt attributes and heading structure,
-  // which is exactly what the SEO checks measure.
   onStage?.({ id: "fetch_html", label: `${prefix}Reading page markup` });
   const htmlStartedAt = Date.now();
   let response: Response;
@@ -587,7 +538,6 @@ export async function fetchSiteData(
   return {
     ok: true,
     extractedData: extractSeoFactsFromHtml(html, response.url.startsWith("https://"), "raw-fetch", {
-      // No live browser on this path — nothing here can be known at all.
       h1Count: null,
       domImages: null,
       domLinks: null,
