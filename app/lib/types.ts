@@ -100,6 +100,17 @@ export interface DomLink {
   accessibleName: string;
 }
 
+/**
+ * News-vs-storefront signals from the scraper's JSON-LD scan, used to skip
+ * pricing/guarantee/payment checks on sites that were never selling anything in the
+ * first place (see `isLikelyContentSite`/`isLikelyCommerceSite` in contentChecks.ts).
+ */
+export interface CommerceSignals {
+  hasProductSchema: boolean;
+  hasNewsSchema: boolean;
+  hasCommerceButtons: boolean;
+}
+
 export interface SeoChecks {
   checks: SeoCheck[];
   seoScore: number;

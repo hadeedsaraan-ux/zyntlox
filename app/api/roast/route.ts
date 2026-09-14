@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
         siteUrl: url,
         domLinks: extractedData.domLinks,
         structuredAddress: extractedData.structuredAddress,
+        commerceSignals: extractedData.commerceSignals,
       });
 
       // Prompt construction lives in lib/prompts.ts so the diagnostics harness can

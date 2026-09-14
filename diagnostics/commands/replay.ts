@@ -131,6 +131,7 @@ export async function replay(args: {
     siteUrl: fixture.url,
     domLinks: fixture.extractedData.domLinks,
     structuredAddress: fixture.extractedData.structuredAddress,
+    commerceSignals: fixture.extractedData.commerceSignals,
   });
 
   const currentSha = sha256(promptText);

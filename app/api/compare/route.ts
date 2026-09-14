@@ -48,6 +48,7 @@ async function assessSite(site: Extract<SiteDataResult, { ok: true }>, url: stri
     siteUrl: url,
     domLinks: site.extractedData.domLinks,
     structuredAddress: site.extractedData.structuredAddress,
+    commerceSignals: site.extractedData.commerceSignals,
   });
 
   const parts = buildRoastParts({

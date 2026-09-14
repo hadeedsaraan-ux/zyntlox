@@ -1,4 +1,4 @@
-import { DomImage, DomLink, ProgressStage, SeoFacts } from "./types";
+import { CommerceSignals, DomImage, DomLink, ProgressStage, SeoFacts } from "./types";
 
 export interface ExtractedSiteData extends SeoFacts {
   canonicalUrl: string | null;
@@ -26,6 +26,12 @@ export interface ExtractedSiteData extends SeoFacts {
    * word is not structured data). `null` when no such markup is present.
    */
   structuredAddress: string | null;
+  /**
+   * News-vs-storefront classification from the scraper's JSON-LD scan. `null` on the
+   * raw-fetch path or an older scraper deployment — contentChecks.ts treats a missing
+   * value the same as "no signal either way" and runs the commerce checks normally.
+   */
+  commerceSignals: CommerceSignals | null;
 }
 
 /** Our own scraper service: headless Chromium, auto-scroll, cookie banners removed. */
@@ -271,7 +277,13 @@ function extractSeoFactsFromHtml(
   html: string,
   hasHttps: boolean,
   dataSource: ExtractedSiteData["dataSource"],
-  domFacts: { h1Count: number | null; domImages: DomImage[] | null; domLinks: DomLink[] | null }
+  domFacts: {
+    h1Count: number | null;
+    domImages: DomImage[] | null;
+    domLinks: DomLink[] | null;
+    structuredAddress: string | null;
+    commerceSignals: CommerceSignals | null;
+  }
 ): ExtractedSiteData {
   const headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i);
   const head = headMatch ? headMatch[1] : html;
@@ -318,7 +330,12 @@ function extractSeoFactsFromHtml(
     h1Count: domFacts.h1Count,
     domImages: domFacts.domImages,
     domLinks: domFacts.domLinks,
-    structuredAddress: findStructuredAddress(html),
+    // Prefer the scraper's own (Cheerio-based) structured-address extraction when
+    // present — it already ran server-side and is one less thing for the app to parse.
+    // Fall back to the app's regex-based extraction for the raw-fetch path and older
+    // scraper deployments that don't send this field.
+    structuredAddress: domFacts.structuredAddress ?? findStructuredAddress(html),
+    commerceSignals: domFacts.commerceSignals,
     detectedStack: detectStackFromHtml(html),
     dataSource,
     isVerified: dataSource === "scraper-html",
@@ -334,6 +351,8 @@ interface ScraperResult {
   h1Count: number | null;
   domImages: DomImage[] | null;
   domLinks: DomLink[] | null;
+  structuredAddress: string | null;
+  commerceSignals: CommerceSignals | null;
 }
 
 function isDomImageLike(value: unknown): value is DomImage {
@@ -348,6 +367,16 @@ function isDomImageLike(value: unknown): value is DomImage {
 
 function isDomLinkLike(value: unknown): value is DomLink {
   return typeof value === "object" && value !== null && "href" in value && "accessibleName" in value;
+}
+
+function isCommerceSignalsLike(value: unknown): value is CommerceSignals {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "hasProductSchema" in value &&
+    "hasNewsSchema" in value &&
+    "hasCommerceButtons" in value
+  );
 }
 
 async function fetchFromScraper(
@@ -400,6 +429,8 @@ async function fetchFromScraper(
         : null;
     const domImages = Array.isArray(json.images) ? json.images.filter(isDomImageLike) : null;
     const domLinks = Array.isArray(json.links) ? json.links.filter(isDomLinkLike) : null;
+    const structuredAddress = typeof json.structuredAddress === "string" ? json.structuredAddress : null;
+    const commerceSignals = isCommerceSignalsLike(json.commerceSignals) ? json.commerceSignals : null;
 
     return {
       ok: true,
@@ -412,6 +443,8 @@ async function fetchFromScraper(
         h1Count,
         domImages,
         domLinks,
+        structuredAddress,
+        commerceSignals,
       },
     };
   } catch (err) {
@@ -477,6 +510,8 @@ export async function fetchSiteData(
   let h1Count: number | null = null;
   let domImages: DomImage[] | null = null;
   let domLinks: DomLink[] | null = null;
+  let scraperStructuredAddress: string | null = null;
+  let commerceSignals: CommerceSignals | null = null;
 
   if (useScraper) {
     onStage?.({ id: "scraper", label: `${prefix}Rendering ${hostname}` });
@@ -492,6 +527,8 @@ export async function fetchSiteData(
       h1Count = result.data.h1Count;
       domImages = result.data.domImages;
       domLinks = result.data.domLinks;
+      scraperStructuredAddress = result.data.structuredAddress;
+      commerceSignals = result.data.commerceSignals;
       if (result.data.warning) {
         console.warn(`Scraper warning for ${hostname}: ${result.data.warning}`);
       }
@@ -507,6 +544,8 @@ export async function fetchSiteData(
         h1Count,
         domImages,
         domLinks,
+        structuredAddress: scraperStructuredAddress,
+        commerceSignals,
       }),
       screenshotBase64,
       markdown,
@@ -541,6 +580,8 @@ export async function fetchSiteData(
       h1Count: null,
       domImages: null,
       domLinks: null,
+      structuredAddress: null,
+      commerceSignals: null,
     }),
     screenshotBase64,
     markdown,
