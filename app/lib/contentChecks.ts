@@ -199,12 +199,17 @@ function verb(n: number, singular: string, pluralForm: string): string {
 }
 
 /**
- * UNIVERSAL STRICT LINK MATCHER:
- * 1. Checks text length: Navigation/policy links are concise (<= 6 words, <= 45 chars).
- *    This completely stops long article titles (like news headlines) from matching.
- * 2. Checks clean URL path (without query params) so "?cookie=..." or "?return=..."
- *    never falsely matches buttons like "Log in" or social links.
+ * CONSOLE-STYLE SMART LINK MATCHER:
+ * 1. Text Check: Matches intent keyword, relaxed boundaries, but bounded to <= 6 words (<= 60 chars)
+ *    so multi-word titles like "Privacy Policy Website" or "Data Privacy Statement" pass easily,
+ *    while long news articles are ignored.
+ * 2. URL Path Check: Checks if the path contains the keyword (e.g. /privacy, /privacy-policy-website),
+ *    while ignoring tracking query parameters (?cookie=...) and deep dated news/blog posts.
  */
+function isArticleOrBlogPost(path: string): boolean {
+  return /\/(news|article|blog|post|story)\/|\/\d{4}\/\d{2}\//i.test(path);
+}
+
 function strictLinkMatching(
   links: MarkdownLink[],
   textPattern: RegExp,
@@ -213,14 +218,18 @@ function strictLinkMatching(
   return links.find((l) => {
     const text = (l.text || "").trim();
     const words = text.split(/\s+/).filter(Boolean);
-    // Navigation / Policy links are short. Long prose / article titles are discarded.
-    if (words.length <= 6 && text.length <= 45) {
+
+    // 1. Text Match: Short navigational link with keyword (handles "Privacy Policy Website", etc.)
+    if (words.length > 0 && words.length <= 6 && text.length <= 60) {
       if (textPattern.test(text)) return true;
     }
-    // Path check without query parameters or hashes
+
+    // 2. URL Match: Check clean pathname without query params (handles /privacy, /legal/privacy, etc.)
     if (pathPattern && l.href) {
       const cleanPath = cleanHrefPath(l.href);
-      if (pathPattern.test(cleanPath)) return true;
+      if (pathPattern.test(cleanPath) && !isArticleOrBlogPost(cleanPath)) {
+        return true;
+      }
     }
     return false;
   });
@@ -335,8 +344,8 @@ export function computeContentChecks(
   ));
 
   add(strictLinkCheck("contactRoute", links,
-    /^(contact(\s+us)?|get\s+in\s+touch|reach\s+us|contact\s+support)$/i,
-    /\/(contact(-us)?|get-in-touch)\/?$/i,
+    /\b(contact|get in touch|reach us)\b/i,
+    /contact|get-in-touch|reach-us/i,
     "Contact link", "No link to a contact page or form was found."));
 
   const addressMatch = md.match(ADDRESS_HINT);
@@ -362,7 +371,7 @@ export function computeContentChecks(
   ));
 
   add(strictLinkCheck("mapLink", links,
-    /^(map|directions|find\s+us|view\s+on\s+google\s+maps)$/i,
+    /\b(map|directions|find us)\b/i,
     MAP_HOSTS,
     "Map or directions link", "No map or directions link was found."));
 
@@ -373,42 +382,42 @@ export function computeContentChecks(
   const channels = [
     Boolean(mailto || literalEmailMatch),
     Boolean(tel || literalPhoneMatch),
-    Boolean(strictLinkMatching(links, /^(contact(\s+us)?|get\s+in\s+touch)$/i, /\/contact/i)),
+    Boolean(strictLinkMatching(links, /\b(contact|get in touch)\b/i, /contact/i)),
     links.some((l) => SOCIAL_HOSTS.test(l.href)),
   ].filter(Boolean).length;
   add(result("multipleContactChannels", channels >= 2,
     `${plural(channels, "way")} to make contact are offered.`,
     `Only ${plural(channels, "way")} to make contact was found — visitors who dislike that one have no alternative.`));
 
-  // ===== Legal & policies =====
+  // ===== Legal & policies (Console-Style Robust Checks) =====
   add(strictLinkCheck("privacyPolicy", links,
-    /^(privacy(\s+policy)?|privacy\s+notice|your\s+privacy)$/i,
-    /\/(privacy(-policy|-notice)?)\/?$/i,
+    /\bprivacy\b/i,
+    /privacy/i,
     "Privacy link", "No privacy policy link was found."));
 
   add(strictLinkCheck("termsPage", links,
-    /^(terms(\s+of\s+(service|use))?|terms\s*&\s*conditions|eula|conditions\s+of\s+use)$/i,
-    /\/(terms|terms-of-service|terms-and-conditions|tos)\/?$/i,
+    /\b(terms|conditions|eula|tos)\b/i,
+    /terms|tos|conditions|eula/i,
     "Terms link", "No terms or conditions link was found."));
 
   add(strictLinkCheck("cookiePolicy", links,
-    /^(cookies?(\s+policy)?|cookie\s+(settings|preferences))$/i,
-    /\/(cookies?(-policy)?)\/?$/i,
+    /\bcookies?\b/i,
+    /cookie/i,
     "Cookie policy link", "No cookie policy or cookie settings link was found."));
 
   add(strictLinkCheck("accessibilityStatement", links,
-    /^(accessibility(\s+statement)?)$/i,
-    /\/(accessibility(-statement)?)\/?$/i,
+    /\baccessibility\b/i,
+    /accessibility/i,
     "Accessibility link", "No accessibility statement link was found."));
 
   add(strictLinkCheck("refundPolicy", links,
-    /^(refunds?(\s+policy)?|returns?\s+policy|cancellation\s+policy|refunds?\s*&\s*returns?|returns?\s*&\s*exchanges?)$/i,
-    /\/(refunds?|returns?|cancellation)(-policy)?\/?$/i,
+    /\b(refunds?|returns?\s+policy|cancellation\s+policy|refunds?\s*&\s*returns?|returns?\s*&\s*exchanges?)\b/i,
+    /refund|returns?-policy|cancellation/i,
     "Refund or returns link", "No refund, returns or cancellation information was found."));
 
   add(strictLinkCheck("shippingInfo", links,
-    /^(shipping(\s+policy|\s+info)?|delivery(\s+policy|\s+info)?|fulfillment)$/i,
-    /\/(shipping|delivery)(-policy)?\/?$/i,
+    /\b(shipping|delivery|fulfillment|postage)\b/i,
+    /shipping|delivery|fulfillment/i,
     "Shipping link", "No delivery or shipping information was found."));
 
   const copyrightBlock = md.match(/(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/i);
@@ -426,7 +435,7 @@ export function computeContentChecks(
     add(unanswerable("securityAssurance", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
   } else {
     const priceMatches = [...md.matchAll(CURRENCY_TOKEN)].map((m) => m[0]);
-    const pricingLink = strictLinkMatching(links, /^(pricing|plans|view\s+plans|see\s+pricing|price)$/i, /\/(pricing|plans)/i);
+    const pricingLink = strictLinkMatching(links, /\b(pricing|plans|price)\b/i, /pricing|plans/i);
     add(result("pricingSignals", priceMatches.length > 0 || Boolean(pricingLink),
       priceMatches.length ? `Prices shown on the page (e.g. "${priceMatches[0].trim()}").` : `A pricing link was found: "${pricingLink?.text}"`,
       "No prices and no pricing page link were found."));
@@ -458,7 +467,7 @@ export function computeContentChecks(
     `Profiles on ${plural(socialHosts.length, "platform")} are linked.`,
     socialHosts.length === 1 ? `Only one social platform (${socialHosts[0]}) is linked.` : "No social platforms are linked."));
   add(strictLinkCheck("reviewPlatformLink", links,
-    /^(reviews?|testimonials?|customer\s+reviews)$/i,
+    /\b(reviews?|testimonials?)\b/i,
     REVIEW_HOSTS,
     "Independent review link", "No link to an independent review platform (Google, Trustpilot, Yelp) was found."));
   add(textCheck("pressMentions", md, /\b(as (?:seen|featured) in|featured in|press|award[- ]winning|winner of|certified|accredited|member of|ISO \d)/i,
@@ -497,8 +506,8 @@ export function computeContentChecks(
     /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:19|20)\d{2}|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+(?:19|20)\d{2}|\b(?:19|20)\d{2}-\d{2}-\d{2}\b/i,
     "Dated content", "No content on the page carries a visible date."));
   add(strictLinkCheck("blogOrNewsLink", links,
-    /^(blog|news|articles|latest\s+news|updates|insights)$/i,
-    /\/(blog|news|articles|insights)\/?$/i,
+    /\b(blog|news|articles|insights|updates)\b/i,
+    /blog|news|articles|insights/i,
     "Blog or news link", "No blog, news or updates section was linked."));
   add(absenceCheck("noComingSoon", md, COMING_SOON,
     "No unfinished or placeholder sections.", "The page still says"));
@@ -533,8 +542,8 @@ export function computeContentChecks(
 
   // ===== Identity =====
   add(strictLinkCheck("aboutPage", links,
-    /^(about(\s+us)?|our\s+story|who\s+we\s+are|meet\s+the\s+team|the\s+team)$/i,
-    /\/(about(-us)?|our-story|who-we-are|team)\/?$/i,
+    /\b(about|our story|who we are|meet the team|the team)\b/i,
+    /about|our-story|who-we-are|team/i,
     "About link", "No About, team, or company-story link was found."));
 
   // ===== Content structure =====
@@ -591,8 +600,8 @@ export function computeContentChecks(
 
   // ===== Findability =====
   add(strictLinkCheck("searchLink", links,
-    /^(search|find)$/i,
-    /\/(search|find)\/?$/i,
+    /\b(search|find)\b/i,
+    /search|find/i,
     "Search link", "No search box or search link was found."));
 
   add(result("homeLink", links.some((l) => /^\/?$|^https?:\/\/[^/]+\/?$/.test(l.href) || /^home$/i.test(l.text.trim())),
@@ -600,21 +609,21 @@ export function computeContentChecks(
     "No link back to the home page was found."));
 
   add(strictLinkCheck("faqOrHelpLink", links,
-    /^(faq|faqs|help|support|help\s+center|customer\s+support|frequently\s+asked\s+questions)$/i,
-    /\/(faq|faqs|help|support|help-center)\/?$/i,
+    /\b(faq|faqs|help|support|frequently asked)\b/i,
+    /faq|faqs|help|support/i,
     "Help or FAQ link", "No FAQ, help or support link was found."));
 
   add(strictLinkCheck("sitemapLink", links,
-    /^(sitemap|site\s+map)$/i,
-    /\/(sitemap(\.xml)?)\/?$/i,
+    /\bsitemap\b/i,
+    /sitemap/i,
     "Sitemap link", "No sitemap link was found."));
 
   add(textCheck("breadcrumbPresent", md, /\bbreadcrumb|\bhome\s*[»>\/›]\s*\w/i,
     "Breadcrumbs present", "No breadcrumb trail was found."));
 
   add(strictLinkCheck("resourcesLink", links,
-    /^(resources|guides|docs|documentation|case\s+studies|whitepapers)$/i,
-    /\/(resources|guides|docs|documentation|case-studies|whitepapers)\/?$/i,
+    /\b(resources|guides|docs|documentation|case studies|whitepapers)\b/i,
+    /resources|guides|docs|documentation|case-studies|whitepapers/i,
     "Resources link", "No guides, resources, documentation or case studies were linked."));
 
   // ===== Reading ease =====
