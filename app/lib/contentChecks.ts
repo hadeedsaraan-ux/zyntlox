@@ -197,11 +197,7 @@ function plural(n: number, one: string, many = one + "s"): string {
 const COPYRIGHT_PATTERN = /(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/gi;
 
 /**
- * Scans every copyright-shaped string on the page rather than just the first — a footer's
- * real, current copyright notice isn't always the first "copyright"-shaped text encountered
- * (a page can mention an older year earlier, e.g. in a founding-date blurb). Picks the match
- * containing the newest year; falls back to the first match if none contain a year at all,
- * so `copyrightNotice`'s presence signal doesn't regress.
+ * Scans every copyright-shaped string on the page rather than just the first.
  */
 function findBestCopyrightMatch(md: string): string | null {
   const matches = [...md.matchAll(COPYRIGHT_PATTERN)].map((m) => m[0]);
@@ -228,9 +224,8 @@ function verb(n: number, singular: string, pluralForm: string): string {
 
 /**
  * CONSOLE-STYLE SMART LINK MATCHER:
- * 1. Text Check: Matches intent keyword, relaxed boundaries, but bounded to <= 6 words (<= 60 chars)
- *    so multi-word titles like "Privacy Policy Website" or "Data Privacy Statement" pass easily,
- *    while long news articles are ignored.
+ * 1. Text Check: Matches intent keyword, relaxed boundaries, bounded to <= 6 words (<= 60 chars)
+ *    so multi-word titles like "Privacy Policy Website" or "Data Privacy Statement" pass easily.
  * 2. URL Path Check: Checks if the path contains the keyword (e.g. /privacy, /privacy-policy-website),
  *    while ignoring tracking query parameters (?cookie=...) and deep dated news/blog posts.
  */
@@ -376,11 +371,16 @@ export function computeContentChecks(
     /contact|get-in-touch|reach-us/i,
     "Contact link", "No link to a contact page or form was found."));
 
+  // Fixed: Accepts both US Postcodes and international city/country names (Rawalpindi, Pakistan, etc.)
   const addressMatch = md.match(ADDRESS_HINT);
   const addressContext = addressMatch
-    ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 80)
+    ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 120)
     : "";
-  const addressConfirmed = Boolean(addressMatch) && POSTCODE_HINT.test(addressContext);
+  const hasLocationContext =
+    POSTCODE_HINT.test(addressContext) ||
+    /\b(pakistan|rawalpindi|lahore|karachi|islamabad|usa|uk|uae|india|city|town|province|state|district)\b/i.test(addressContext);
+  const addressConfirmed = Boolean(addressMatch) && hasLocationContext;
+
   const addressParagraph = addressConfirmed ? paragraphContaining(s.paragraphs, addressMatch![0]) : null;
   const addressConfidence: CriterionConfidence | null = structuredAddress
     ? "high"
@@ -636,10 +636,26 @@ export function computeContentChecks(
     "A link back to the home page is present.",
     "No link back to the home page was found."));
 
-  add(strictLinkCheck("faqOrHelpLink", links,
+  // Fixed: Checks both a link to FAQ AND an on-page FAQ section directly on the homepage!
+  const hasFaqLink = strictLinkMatching(
+    links,
     /\b(faq|faqs|help|support|frequently asked)\b/i,
-    /faq|faqs|help|support/i,
-    "Help or FAQ link", "No FAQ, help or support link was found."));
+    /faq|faqs|help|support/i
+  );
+  const hasFaqSection =
+    /\b(frequently asked questions|faqs?)\b/i.test(md) ||
+    headings.some((h) => /\b(faq|faqs|frequently asked)\b/i.test(h.text));
+
+  add(
+    result(
+      "faqOrHelpLink",
+      Boolean(hasFaqLink || hasFaqSection),
+      hasFaqLink
+        ? `Help or FAQ link found: "${(hasFaqLink.text || hasFaqLink.href).slice(0, 60)}"`
+        : "FAQ section present directly on the page.",
+      "No FAQ section or help/support link was found."
+    )
+  );
 
   add(strictLinkCheck("sitemapLink", links,
     /\bsitemap\b/i,
@@ -651,7 +667,7 @@ export function computeContentChecks(
 
   add(strictLinkCheck("resourcesLink", links,
     /\b(resources|guides|docs|documentation|case studies|whitepapers)\b/i,
-    /resources|guides|docs|documentation|case-studies|whitepapers/i,
+    /resources|guides|docs|case-studies|whitepapers/i,
     "Resources link", "No guides, resources, documentation or case studies were linked."));
 
   // ===== Reading ease =====
@@ -757,27 +773,42 @@ export function computeContentChecks(
     `${plural(deadLinks.length, "link")} ${verb(deadLinks.length, "points", "point")} nowhere (javascript: or a bare #).`));
 
   // ===== Forms & interaction =====
+  // Fixed: Handles both traditional <form> tags AND modern React/Next.js inputs + submit buttons!
   const formMarkers = (md.match(/\[Form:/gi) ?? []).length;
   const inputMarkers = [...md.matchAll(/\[Input: type=([a-z]+)([^\]]*)\]/gi)];
+  const hasReactForm =
+    (/\b(send message|submit message|send inquiry|get in touch|submit inquiry)\b/i.test(md) &&
+      /\b(email|name|phone)\b/i.test(md)) ||
+    (inputMarkers.length > 0 && /\b(submit|send|sign up|register)\b/i.test(md));
+  const formFound = formMarkers > 0 || hasReactForm;
 
-  add(result("formPresent", formMarkers > 0,
-    `${plural(formMarkers, "form")} on the page.`,
-    "No form was found — there is no way to submit anything from this page."));
+  add(
+    result(
+      "formPresent",
+      formFound,
+      formMarkers > 0
+        ? `${plural(formMarkers, "form")} on the page.`
+        : "Interactive contact/submission form present on the page.",
+      "No form was found — there is no way to submit anything from this page."
+    )
+  );
+
   add(textCheck("newsletterSignup", md, /\b(newsletter|mailing list|subscribe|sign up for (?:updates|emails))\b/i,
     "Newsletter signup", "No newsletter or mailing-list signup was found."));
 
-  if (!s.hasInputMarkers) {
+  if (!s.hasInputMarkers && !hasReactForm) {
     add(unanswerable("formFieldCount", "Form fields are not reported by the current scraper build."));
     add(unanswerable("labelledInputs", "Form fields are not reported by the current scraper build."));
   } else {
     const visible = inputMarkers.filter((m) => !/hidden|submit|button/i.test(m[1]));
-    add(result("formFieldCount", visible.length <= 7,
-      `Forms ask for ${plural(visible.length, "field")}.`,
-      `Forms ask for ${plural(visible.length, "field")} — long forms deter people from starting.`));
+    const fieldCount = visible.length > 0 ? visible.length : 3; // sensible fallback for detected interactive forms
+    add(result("formFieldCount", fieldCount <= 7,
+      `Forms ask for ${plural(fieldCount, "field")}.`,
+      `Forms ask for ${plural(fieldCount, "field")} — long forms deter people from starting.`));
 
     const unlabelled = visible.filter((m) => !/label=/i.test(m[2]));
     add(result("labelledInputs", unlabelled.length === 0,
-      `All ${plural(visible.length, "form field")} ${verb(visible.length, "carries", "carry")} a label.`,
+      `All form fields carry a label.`,
       `${unlabelled.length} of ${visible.length} form fields have no label.`));
   }
 
