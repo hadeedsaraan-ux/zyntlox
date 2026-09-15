@@ -194,6 +194,34 @@ function plural(n: number, one: string, many = one + "s"): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+const COPYRIGHT_PATTERN = /(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/gi;
+
+/**
+ * Scans every copyright-shaped string on the page rather than just the first — a footer's
+ * real, current copyright notice isn't always the first "copyright"-shaped text encountered
+ * (a page can mention an older year earlier, e.g. in a founding-date blurb). Picks the match
+ * containing the newest year; falls back to the first match if none contain a year at all,
+ * so `copyrightNotice`'s presence signal doesn't regress.
+ */
+function findBestCopyrightMatch(md: string): string | null {
+  const matches = [...md.matchAll(COPYRIGHT_PATTERN)].map((m) => m[0]);
+  if (matches.length === 0) return null;
+
+  let best: string | null = null;
+  let bestYear = -Infinity;
+  for (const match of matches) {
+    const years = [...match.matchAll(/(19|20)\d{2}/g)].map((m) => Number(m[0]));
+    if (years.length === 0) continue;
+    const newest = Math.max(...years);
+    if (newest > bestYear) {
+      bestYear = newest;
+      best = match;
+    }
+  }
+
+  return best ?? matches[0];
+}
+
 function verb(n: number, singular: string, pluralForm: string): string {
   return n === 1 ? singular : pluralForm;
 }
@@ -420,9 +448,9 @@ export function computeContentChecks(
     /shipping|delivery|fulfillment/i,
     "Shipping link", "No delivery or shipping information was found."));
 
-  const copyrightBlock = md.match(/(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/i);
+  const copyrightBlock = findBestCopyrightMatch(md);
   add(result("copyrightNotice", Boolean(copyrightBlock),
-    `Copyright notice present: "${copyrightBlock?.[0].trim()}"`,
+    `Copyright notice present: "${copyrightBlock?.trim()}"`,
     "No copyright notice was found anywhere on the page."));
 
   // ===== Commerce & guarantees =====
@@ -489,7 +517,7 @@ export function computeContentChecks(
   // ===== Freshness & maintenance =====
   const currentYear = new Date().getFullYear();
   const copyYears = copyrightBlock
-    ? [...copyrightBlock[0].matchAll(/(19|20)\d{2}/g)].map((m) => Number(m[0]))
+    ? [...copyrightBlock.matchAll(/(19|20)\d{2}/g)].map((m) => Number(m[0]))
     : [];
   const newest = copyYears.length ? Math.max(...copyYears) : null;
   add(result("copyrightCurrent", newest !== null && currentYear - newest <= 1,

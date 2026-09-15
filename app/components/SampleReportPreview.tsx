@@ -10,7 +10,7 @@ export default function SampleReportPreview() {
   const [mode, setMode] = useState<ReportMode>("technical");
 
   return (
-    <section className="w-full max-w-2xl mt-12">
+    <section className="w-full max-w-2xl mt-12" data-scrape-ignore="true">
       <div className="text-center mb-6">
         <span className="font-mono text-[11px] tracking-widest text-[var(--amber)] uppercase">
           ▸ Example Output ◂
