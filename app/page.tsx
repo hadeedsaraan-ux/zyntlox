@@ -7,9 +7,11 @@ import ModeToggle from "./components/ModeToggle";
 import ExportPdfButton from "./components/ExportPdfButton";
 import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
+import Testimonials from "./components/Testimonials";
 import ProgressIndicator from "./components/ProgressIndicator";
-import { Report, ReportMode, ProgressStage, StreamEvent } from "./lib/types";
+import { Report, ReportMode, ProgressStage, StreamEvent, RawScrapeData } from "./lib/types";
 import { ExtractedSiteData } from "./lib/siteData";
+import { useRawData } from "./components/RawDataProvider";
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -18,6 +20,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [mode, setMode] = useState<ReportMode>("technical");
   const [activeStage, setActiveStage] = useState<ProgressStage | null>(null);
+  const { setRawScrape } = useRawData();
 
   const handleRoast = async () => {
     if (!url) {
@@ -62,13 +65,17 @@ export default function Home() {
 
         for (const line of lines) {
           if (!line.trim()) continue;
-          const event: StreamEvent<{ report: Report; rawData: ExtractedSiteData }> =
-            JSON.parse(line);
+          const event: StreamEvent<{
+            report: Report;
+            rawData: ExtractedSiteData;
+            rawScrape: RawScrapeData;
+          }> = JSON.parse(line);
 
           if (event.type === "stage") {
             setActiveStage(event.stage);
           } else if (event.type === "result") {
             setReport(event.data.report);
+            setRawScrape(event.data.rawScrape);
           } else if (event.type === "error") {
             setError(event.error);
           }
@@ -148,6 +155,12 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <ModeToggle mode={mode} onChange={setMode} />
               <ExportPdfButton report={report} mode={mode} url={url} />
+              <Link
+                href="/raw"
+                className="px-4 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] font-mono text-xs tracking-wide uppercase text-[var(--muted)] transition hover:text-[var(--text)] hover:border-[var(--amber)]"
+              >
+                View Raw Data
+              </Link>
             </div>
           </div>
           <RoastReport report={report} mode={mode} />
@@ -156,6 +169,7 @@ export default function Home() {
         <>
           <HowItWorks />
           <SampleReportPreview />
+          <Testimonials />
         </>
       )}
     </main>

@@ -1,5 +1,5 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import { CheckStatus, CriterionRating, Report, ReportMode } from "../types";
+import { CheckStatus, Report, ReportMode } from "../types";
 import {
   LABELS,
   IMPACT_LABELS,
@@ -9,7 +9,6 @@ import {
   formatSeoCheckDetail,
   groupSeoChecks,
 } from "../labels";
-import { criterionLabel, groupResultsBySubgroup } from "../criteria";
 import { usedBackupModel } from "../gemini";
 
 const COLORS = {
@@ -152,42 +151,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontStyle: "italic",
   },
-  breakdownGrid: {
-    flexDirection: "column",
-    gap: 12,
-  },
-  breakdownColumn: {
-    width: "100%",
-  },
-  breakdownHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 5,
-  },
-  breakdownCategory: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 8,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    color: COLORS.muted,
-  },
-  breakdownScore: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 10,
-  },
-  criterionRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 4,
-  },
-  criterionDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    marginTop: 3,
-    marginRight: 5,
-  },
   criterionSubgroupHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -195,22 +158,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 3,
   },
-  criterionSubgroup: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 7.5,
-    color: COLORS.text,
-  },
   criterionSubgroupTally: {
     fontFamily: "Helvetica-Bold",
     fontSize: 7.5,
-    color: COLORS.muted,
-  },
-  criterionLabel: {
-    fontSize: 8,
-    color: COLORS.text,
-  },
-  criterionEvidence: {
-    fontSize: 7,
     color: COLORS.muted,
   },
   problemRow: {
@@ -330,14 +280,6 @@ function statusColor(status: CheckStatus) {
   return COLORS.danger;
 }
 
-// "unclear" is amber rather than red: it was excluded from scoring, so showing it as a
-// failure would misrepresent a criterion that never counted against the site.
-function ratingColor(rating: CriterionRating) {
-  if (rating === "yes") return COLORS.success;
-  if (rating === "unclear") return COLORS.amber;
-  return COLORS.danger;
-}
-
 export default function ReportDocument({
   report,
   mode,
@@ -414,65 +356,6 @@ export default function ReportDocument({
             </View>
           ))}
         </View>
-
-        {report.assessments && report.assessments.length > 0 && (
-          // 60 criteria no longer fit on one page — must wrap.
-          <View style={styles.card} wrap>
-            <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
-              {labels.scoreBreakdown}
-            </Text>
-            <View style={styles.breakdownGrid}>
-              {report.assessments.map((a) => (
-                <View key={a.category} style={styles.breakdownColumn}>
-                  <View style={styles.breakdownHeader}>
-                    <Text style={styles.breakdownCategory}>{labels[a.category]}</Text>
-                    <Text style={styles.breakdownScore}>
-                      {a.score}
-                      <Text style={{ fontSize: 7, color: COLORS.muted }}>/10</Text>
-                    </Text>
-                  </View>
-                  {/* Sub-group headers with an n/m tally. Print can't collapse, so every
-                      criterion is listed — the headers are what keep 60 rows navigable. */}
-                  {groupResultsBySubgroup(a.category, a.criteria).map((g) => (
-                    <View key={g.subgroup}>
-                      <View style={styles.criterionSubgroupHeader}>
-                        <Text style={styles.criterionSubgroup}>
-                          {cleanPdfText(g.subgroup)}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.criterionSubgroupTally,
-                            g.hasFailure ? { color: COLORS.danger } : {},
-                          ]}
-                        >
-                          {g.issues > 0 ? `${g.issues} issue${g.issues > 1 ? "s" : ""} · ` : ""}
-                          {g.met}/{g.answered}
-                        </Text>
-                      </View>
-                      {g.results.map((c) => (
-                        <View key={c.id} style={styles.criterionRow} wrap={false}>
-                          <View
-                            style={[styles.criterionDot, { backgroundColor: ratingColor(c.rating) }]}
-                          />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.criterionLabel}>
-                              {cleanPdfText(criterionLabel(c.id, mode))}
-                            </Text>
-                            {c.evidence ? (
-                              <Text style={styles.criterionEvidence}>
-                                {cleanPdfText(c.evidence)}
-                              </Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
 
         {report.seoChecks && (
           // `wrap` (not wrap={false}) — the grouped checklist is now taller than one page.

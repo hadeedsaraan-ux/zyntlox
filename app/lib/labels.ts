@@ -14,7 +14,6 @@ export const LABELS: Record<
     technicalSeoChecks: string;
     seoUnverifiedNotice: string;
     backupModelNotice: string;
-    scoreBreakdown: string;
   }
 > = {
   technical: {
@@ -32,7 +31,6 @@ export const LABELS: Record<
     // Deliberately does NOT claim the scores are less reliable. The measured 6-point
     // spread was taken on the fallback model, so that claim was never supported.
     backupModelNotice: "Our first-choice AI model was busy, so a backup model produced this analysis.",
-    scoreBreakdown: "Score Breakdown",
   },
   plain: {
     firstImpression: "What Visitors See",
@@ -47,7 +45,6 @@ export const LABELS: Record<
     seoUnverifiedNotice:
       "We couldn't fully load this page to double check these numbers, so a few of them below might be a little off.",
     backupModelNotice: "Our usual AI was busy, so we used our backup one for this report.",
-    scoreBreakdown: "How We Scored It",
   },
 };
 

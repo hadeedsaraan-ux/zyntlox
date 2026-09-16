@@ -8,7 +8,7 @@ import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scorin
 import { criterionDef, criterionLabel, criterionWeight } from "../../lib/criteria";
 import { buildRoastParts, buildProseParts } from "../../lib/prompts";
 import { hostOf, logEvent } from "../../lib/log";
-import { Report } from "../../lib/types";
+import { Report, RawScrapeData } from "../../lib/types";
 
 export async function POST(request: NextRequest) {
   const { url } = await request.json();
@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
   const { stream, sendStage, sendResult, sendError } = createProgressStream<{
     report: Report;
     rawData: ExtractedSiteData;
+    rawScrape: RawScrapeData;
   }>();
 
   (async () => {
@@ -225,7 +226,11 @@ export async function POST(request: NextRequest) {
         parseOk: true,
       });
 
-      sendResult({ report, rawData: extractedData });
+      sendResult({
+        report,
+        rawData: extractedData,
+        rawScrape: { url, screenshotBase64, markdown: fullMarkdown },
+      });
     } catch (error) {
       console.error(error);
       logEvent("roast.failed", {

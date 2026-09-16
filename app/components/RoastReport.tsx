@@ -1,4 +1,4 @@
-import { CheckStatus, CriterionRating, Report, ReportMode } from "../lib/types";
+import { CheckStatus, Report, ReportMode } from "../lib/types";
 import {
   LABELS,
   IMPACT_LABELS,
@@ -8,7 +8,6 @@ import {
   formatSeoCheckDetail,
   groupSeoChecks,
 } from "../lib/labels";
-import { criterionLabel, groupResultsBySubgroup } from "../lib/criteria";
 import { usedBackupModel } from "../lib/gemini";
 import ScoreGauge from "./ScoreGauge";
 import CodeSnippet from "./CodeSnippet";
@@ -16,14 +15,6 @@ import CodeSnippet from "./CodeSnippet";
 function statusDotClass(status: CheckStatus): string {
   if (status === "pass") return "bg-[var(--success)]";
   if (status === "warn") return "bg-[var(--amber)]";
-  return "bg-[var(--danger)]";
-}
-
-// "unclear" is amber rather than red: it was excluded from scoring, so showing it as a
-// failure would misrepresent a criterion that never counted against the site.
-function ratingDotClass(rating: CriterionRating): string {
-  if (rating === "yes") return "bg-[var(--success)]";
-  if (rating === "unclear") return "bg-[var(--amber)]";
   return "bg-[var(--danger)]";
 }
 
@@ -80,80 +71,6 @@ export default function RoastReport({
           </div>
         ))}
       </div>
-
-      {/* Score breakdown — the criteria each subjective score was computed from */}
-      {report.assessments && report.assessments.length > 0 && (
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
-          <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--amber)] mb-4">
-            📊 {labels.scoreBreakdown}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {report.assessments.map((a) => (
-              <div key={a.category}>
-                <div className="flex items-baseline justify-between mb-3">
-                  <p className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase">
-                    {labels[a.category]}
-                  </p>
-                  <p className="font-mono text-sm font-bold">
-                    {a.score}
-                    <span className="text-[var(--muted)]">/10</span>
-                  </p>
-                </div>
-                {/* Native <details> keeps this a server component — no JS shipped for
-                    what is only show/hide. Groups containing a failure open by default
-                    so problems are never a click away. */}
-                <div className="space-y-2">
-                  {groupResultsBySubgroup(a.category, a.criteria).map((g) => (
-                    // Always closed. The tally and issue count in the summary are what
-                    // signal there is something inside, so a group never springs open
-                    // and lengthens the page before the reader asks for it.
-                    <details
-                      key={g.subgroup}
-                      className="group border-b border-[var(--border)] last:border-0 pb-2"
-                    >
-                      <summary className="flex items-baseline justify-between gap-2 cursor-pointer list-none py-1 hover:text-[var(--amber)] transition-colors">
-                        <span className="text-[var(--text)] text-sm font-semibold">
-                          <span className="inline-block w-3 text-[var(--muted)] group-open:rotate-90 transition-transform">
-                            ›
-                          </span>
-                          {g.subgroup}
-                        </span>
-                        <span className="flex items-baseline gap-1.5 shrink-0">
-                          {g.issues > 0 && (
-                            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger)]/15 text-[var(--danger)]">
-                              {g.issues}
-                            </span>
-                          )}
-                          <span className="font-mono text-xs text-[var(--muted)]">
-                            {g.met}/{g.answered}
-                          </span>
-                        </span>
-                      </summary>
-                      <div className="space-y-2 pl-3 pt-1">
-                        {g.results.map((c) => (
-                          <div key={c.id} className="flex gap-2">
-                            <span
-                              className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${ratingDotClass(c.rating)}`}
-                            />
-                            <div>
-                              <p className="text-[var(--text)] text-sm">
-                                {criterionLabel(c.id, mode)}
-                              </p>
-                              {c.evidence && (
-                                <p className="text-[var(--muted)] text-xs">{c.evidence}</p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Technical SEO Checks */}
       {report.seoChecks && (
