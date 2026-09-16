@@ -226,6 +226,13 @@ export interface Report {
   suggestions: ActionItem[];
 }
 
+/** The scraper's raw output for a roasted page, for the "View Raw Data" page. */
+export interface RawScrapeData {
+  url: string;
+  screenshotBase64: string | null;
+  markdown: string | null;
+}
+
 export type ComparisonWinner = "yours" | "competitor" | "tie";
 
 export interface SiteSummary {

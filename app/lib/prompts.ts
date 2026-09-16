@@ -300,9 +300,10 @@ WHAT THE PAGE GOT RIGHT (${input.met.length}):
 ${input.met.slice(0, 25).map((m) => `  - ${m}`).join("\n") || "  (nothing)"}
 
 CRITICAL RULES FOR ADVICE:
-1. Every problem, win and suggestion must trace directly back to something in the FAILED list above. 
+1. Every problem, win and suggestion must trace directly back to something in the FAILED list above.
 2. Do NOT invent issues that were not found. If an item is in the "GOT RIGHT" list (e.g. contact email found, viewport present, or headings present), you MUST NOT claim it is missing or broken.
 3. Do NOT state counts or measurements of your own. Never write a number that does not appear in the findings above.
+4. Field names are exact per array and must never cross over: biggestProblems items use "issue"/"plainIssue". quickWins and suggestions items use "text"/"plainText". Never put "plainIssue" on a quickWins or suggestions item, and never put "text" on a biggestProblems item.
 
 You MUST return between ${PROSE_MIN} and ${PROSE_MAX} items in EACH of the three sections. Order every list most-important first.
 
@@ -318,17 +319,17 @@ For every text field, provide TWO versions: a "technical" version (terms like UX
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
   "biggestProblems": [
-    {"issue": "<technical problem>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
+    {"issue": "<name the real consequence for a visitor on this page — hesitation, lost leads, bouncing, lost trust — then end the same sentence with the concrete fix. Never a bare restatement like 'No refund policy found'>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
   ],
   "quickWins": [
-    {"text": "<technical, fixable in 10-30 min>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+    {"text": "<technical, fixable in 10-30 min, short and direct — no consequence narrative needed>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
   ],
   "suggestions": [
-    {"text": "<specific actionable technical suggestion>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+    {"text": "<a bigger strategic move worth planning — tie it to how it would change visitor behavior or business results, and say what to build or change. Skip flat statements of the finding itself>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
   ]
 }
 
-Remember: ${PROSE_MIN}-${PROSE_MAX} items in each of the three arrays.`;
+Remember: ${PROSE_MIN}-${PROSE_MAX} items in each of the three arrays. Remember rule 4: biggestProblems uses "issue"/"plainIssue", quickWins and suggestions use "text"/"plainText" — never mix them up.`;
 }
 
 export function buildProseParts(input: ProsePromptInput): GeminiPart[] {
