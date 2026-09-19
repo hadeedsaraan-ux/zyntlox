@@ -299,11 +299,15 @@ ${input.failed.map((f) => `  - ${f}`).join("\n") || "  (nothing failed)"}
 WHAT THE PAGE GOT RIGHT (${input.met.length}):
 ${input.met.slice(0, 25).map((m) => `  - ${m}`).join("\n") || "  (nothing)"}
 
+THE TWO LISTS ABOVE ARE YOUR ENTIRE UNIVERSE OF FACTS. You have no other information about this page — no knowledge of it from anywhere else, no assumptions about what "sites like this usually have". Every problem, win, and suggestion you write must be built ONLY from items that literally appear in the FAILED list (or, for context, the GOT RIGHT list). Do not bring in a plausible-sounding issue that isn't there just because it's common for this type of site — if it is not in the FAILED list, it did not happen on this page, full stop.
+
 CRITICAL RULES FOR ADVICE:
 1. Every problem, win and suggestion must trace directly back to something in the FAILED list above.
 2. Do NOT invent issues that were not found. If an item is in the "GOT RIGHT" list (e.g. contact email found, viewport present, or headings present), you MUST NOT claim it is missing or broken.
 3. Do NOT state counts or measurements of your own. Never write a number that does not appear in the findings above.
 4. Field names are exact per array and must never cross over: biggestProblems items use "issue"/"plainIssue". quickWins and suggestions items use "text"/"plainText". Never put "plainIssue" on a quickWins or suggestions item, and never put "text" on a biggestProblems item.
+5. Judge every FAILED item against what actually matters for THIS specific site's business type before using it. A missing phone number or business hours might be critical for a local service business, and near-irrelevant for a SaaS product with a live-chat widget. Do NOT include a failed item just because it exists in the list — only include it if it represents a genuine, specific cost to THIS business (lost leads, hesitating buyers, damaged trust, lost search visibility). Leave out generic checklist items that don't matter for this type of site entirely, even if that makes the list shorter.
+6. Select from the provided data only — never assume, guess, or fill in a problem/win/suggestion from your own general knowledge of websites. If the FAILED and GOT RIGHT lists don't give you enough genuinely important material for a section, return fewer items rather than inventing or assuming one.
 
 You MUST return between ${PROSE_MIN} and ${PROSE_MAX} items in EACH of the three sections. Order every list most-important first.
 
