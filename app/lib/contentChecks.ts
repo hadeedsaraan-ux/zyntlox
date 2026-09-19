@@ -627,10 +627,23 @@ export function computeContentChecks(
         `Link text makes up most of the page's words — it reads as a menu rather than a page.`));
 
   // ===== Findability =====
-  add(strictLinkCheck("searchLink", links,
-    /\b(search|find)\b/i,
-    /search|find/i,
-    "Search link", "No search box or search link was found."));
+  // Fixed: a search box is very often a plain <input type="search">, not a hyperlink, so
+  // it never appears in the `links` array. Check the raw [Input: type=search …] marker
+  // too, not just link text/href, or a real search box on the page gets reported missing.
+  const searchInputMatch = md.match(/\[Input:\s*type=search\b[^\]]*\]/i);
+  const searchLinkHit = strictLinkMatching(links, /\b(search|find)\b/i, /search|find/i);
+  add(
+    searchInputMatch || searchLinkHit
+      ? result(
+          "searchLink",
+          true,
+          searchInputMatch
+            ? "A search input is present on the page."
+            : `Search link found: "${(searchLinkHit!.text || searchLinkHit!.href).slice(0, 60)}"`,
+          ""
+        )
+      : result("searchLink", false, "", "No search box or search link was found.")
+  );
 
   add(result("homeLink", links.some((l) => /^\/?$|^https?:\/\/[^/]+\/?$/.test(l.href) || /^home$/i.test(l.text.trim())),
     "A link back to the home page is present.",
@@ -800,7 +813,33 @@ export function computeContentChecks(
     add(unanswerable("formFieldCount", "Form fields are not reported by the current scraper build."));
     add(unanswerable("labelledInputs", "Form fields are not reported by the current scraper build."));
   } else {
-    const visible = inputMarkers.filter((m) => !/hidden|submit|button/i.test(m[1]));
+    // Fixed: only count inputs that fall INSIDE an actual [Form: …] block. Filter sidebars,
+    // search boxes and other standalone inputs elsewhere on the page (never wrapped in a
+    // form) were previously being counted as if they were fields of "the" form, wildly
+    // inflating the count on pages like a marketplace browse/filter UI.
+    const formMarkerMatches = [...md.matchAll(/\[Form:[^\]]*\]/gi)];
+    let scopedInputMarkers = inputMarkers;
+    if (formMarkerMatches.length > 0) {
+      const ranges = formMarkerMatches.map((m, i) => {
+        const start = (m.index ?? 0) + m[0].length;
+        const end = i + 1 < formMarkerMatches.length ? (formMarkerMatches[i + 1].index ?? md.length) : md.length;
+        return [start, end] as const;
+      });
+      scopedInputMarkers = inputMarkers.filter((m) => {
+        const pos = m.index ?? 0;
+        return ranges.some(([start, end]) => pos >= start && pos < end);
+      });
+      // If a real [Form:] block exists but genuinely had zero inputs land inside its range
+      // (e.g. odd markdown ordering), fall back to the page-wide list rather than reporting
+      // a form with 0 fields — same as the original behaviour.
+      if (scopedInputMarkers.length === 0 && inputMarkers.length > 0) {
+        scopedInputMarkers = inputMarkers;
+      }
+    }
+    // hasReactForm (a JS-driven form with no semantic [Form:] marker at all) keeps the
+    // page-wide input list, since there's no [Form:] boundary to scope by.
+
+    const visible = scopedInputMarkers.filter((m) => !/hidden|submit|button/i.test(m[1]));
     const fieldCount = visible.length > 0 ? visible.length : 3; // sensible fallback for detected interactive forms
     add(result("formFieldCount", fieldCount <= 7,
       `Forms ask for ${plural(fieldCount, "field")}.`,
