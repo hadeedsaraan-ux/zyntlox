@@ -115,6 +115,23 @@ function linksFor(markdown: string, domLinks: DomLink[] | null | undefined): Mar
   return parseLinks(markdown);
 }
 
+/**
+ * Splits prose into sentences WITHOUT ever letting a sentence cross a paragraph
+ * (blank-line) boundary. A single flat split on `.!?` across the whole document would
+ * let a punctuation-free block (a filter sidebar's tag/checkbox labels, a nav list with
+ * no periods) silently merge with its neighbouring blocks into one enormous fake
+ * "sentence", wrecking avgSentenceLength on pages with UI chrome like that.
+ */
+function splitIntoSentences(prose: string): string[] {
+  const blocks = prose.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  return blocks.flatMap((block) =>
+    block
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 1)
+  );
+}
+
 function analyse(markdown: string | null, domLinks: DomLink[] | null | undefined): PageStats {
   const md = markdown ?? "";
   const prose = proseOf(md);
@@ -125,7 +142,7 @@ function analyse(markdown: string | null, domLinks: DomLink[] | null | undefined
     prose,
     links: linksFor(md, domLinks),
     words,
-    sentences: prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 1),
+    sentences: splitIntoSentences(prose),
     paragraphs: prose.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.split(/\s+/).length > 3),
     headings: collectHeadings(md),
     hasInputMarkers: /\[Input:/i.test(md),
