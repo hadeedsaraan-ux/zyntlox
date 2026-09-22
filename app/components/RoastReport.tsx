@@ -18,14 +18,21 @@ function statusDotClass(status: CheckStatus): string {
   return "bg-[var(--danger)]";
 }
 
+const editableTextClass =
+  "w-full resize-none bg-transparent border border-transparent rounded-md -mx-2 px-2 py-1 leading-relaxed outline-none transition focus:border-[var(--amber)] focus:bg-[var(--bg)]";
+
 export default function RoastReport({
   report,
   mode = "technical",
   sample = false,
+  editable = false,
+  onChange,
 }: {
   report: Report;
   mode?: ReportMode;
   sample?: boolean;
+  editable?: boolean;
+  onChange?: (updated: Report) => void;
 }) {
   const labels = LABELS[mode];
   const score = report.overallScore ?? 0;
@@ -34,14 +41,32 @@ export default function RoastReport({
     <div className="space-y-5">
       <ScoreGauge score={score} />
 
+      {editable && (
+        <p className="text-center font-mono text-[10px] text-[var(--muted)] italic">
+          Generated with AI — click any highlighted text below to fix a detail before sharing.
+        </p>
+      )}
+
       {/* First Impression */}
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6">
         <h3 className="font-display font-bold text-sm tracking-wide uppercase text-[var(--amber)] mb-2">
           👀 {labels.firstImpression}
         </h3>
-        <p className="text-[var(--text)] opacity-90 leading-relaxed">
-          {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
-        </p>
+        {editable ? (
+          <textarea
+            className={`${editableTextClass} text-[var(--text)] opacity-90`}
+            value={(mode === "plain" ? report.plainFirstImpression : report.firstImpression) ?? ""}
+            rows={3}
+            onChange={(e) => {
+              const field = mode === "plain" ? "plainFirstImpression" : "firstImpression";
+              onChange?.({ ...report, [field]: e.target.value });
+            }}
+          />
+        ) : (
+          <p className="text-[var(--text)] opacity-90 leading-relaxed">
+            {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
+          </p>
+        )}
         {usedBackupModel(report.modelUsed) && (
           <p className="font-mono text-[10px] text-[var(--muted)] mt-2">
             {labels.backupModelNotice}
@@ -146,9 +171,26 @@ export default function RoastReport({
         <div className="space-y-4">
           {report.biggestProblems?.map((p, i) => (
             <div key={i} className="dotted-divider pt-4 first:pt-0 first:border-0">
-              <p className="text-[var(--text)] opacity-90 mb-1">
-                {mode === "plain" ? p.plainIssue : p.issue}
-              </p>
+              {editable ? (
+                <textarea
+                  className={`${editableTextClass} text-[var(--text)] opacity-90 mb-1`}
+                  value={(mode === "plain" ? p.plainIssue : p.issue) ?? ""}
+                  rows={2}
+                  onChange={(e) => {
+                    const field = mode === "plain" ? "plainIssue" : "issue";
+                    onChange?.({
+                      ...report,
+                      biggestProblems: report.biggestProblems?.map((item, idx) =>
+                        idx === i ? { ...item, [field]: e.target.value } : item
+                      ),
+                    });
+                  }}
+                />
+              ) : (
+                <p className="text-[var(--text)] opacity-90 mb-1">
+                  {mode === "plain" ? p.plainIssue : p.issue}
+                </p>
+              )}
               <p className="font-mono text-[11px] text-[var(--muted)] uppercase tracking-wide">
                 Impact: {IMPACT_LABELS[mode][p.impact]} · Effort: {EFFORT_LABELS[mode][p.effort]}
               </p>
@@ -166,8 +208,25 @@ export default function RoastReport({
           {report.quickWins?.map((q, i) => (
             <li key={i} className="text-[var(--text)] opacity-90">
               <div className="flex gap-2">
-                <span className="text-[var(--success)] font-mono shrink-0">→</span>
-                <span>{mode === "plain" ? q.plainText : q.text}</span>
+                <span className="text-[var(--success)] font-mono shrink-0 mt-1">→</span>
+                {editable ? (
+                  <textarea
+                    className={`${editableTextClass} flex-1`}
+                    value={(mode === "plain" ? q.plainText : q.text) ?? ""}
+                    rows={2}
+                    onChange={(e) => {
+                      const field = mode === "plain" ? "plainText" : "text";
+                      onChange?.({
+                        ...report,
+                        quickWins: report.quickWins?.map((item, idx) =>
+                          idx === i ? { ...item, [field]: e.target.value } : item
+                        ),
+                      });
+                    }}
+                  />
+                ) : (
+                  <span>{mode === "plain" ? q.plainText : q.text}</span>
+                )}
               </div>
               {q.snippet && (
                 <div className="mt-2 ml-5">
@@ -188,8 +247,25 @@ export default function RoastReport({
           {report.suggestions?.map((s, i) => (
             <li key={i} className="text-[var(--text)] opacity-90">
               <div className="flex gap-2">
-                <span className="text-[var(--amber)] font-mono shrink-0">→</span>
-                <span>{mode === "plain" ? s.plainText : s.text}</span>
+                <span className="text-[var(--amber)] font-mono shrink-0 mt-1">→</span>
+                {editable ? (
+                  <textarea
+                    className={`${editableTextClass} flex-1`}
+                    value={(mode === "plain" ? s.plainText : s.text) ?? ""}
+                    rows={2}
+                    onChange={(e) => {
+                      const field = mode === "plain" ? "plainText" : "text";
+                      onChange?.({
+                        ...report,
+                        suggestions: report.suggestions?.map((item, idx) =>
+                          idx === i ? { ...item, [field]: e.target.value } : item
+                        ),
+                      });
+                    }}
+                  />
+                ) : (
+                  <span>{mode === "plain" ? s.plainText : s.text}</span>
+                )}
               </div>
               {s.snippet && (
                 <div className="mt-2 ml-5">

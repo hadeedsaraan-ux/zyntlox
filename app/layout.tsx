@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter } from "next/font/google";
 import Footer from "./components/Footer";
 import { RawDataProvider } from "./components/RawDataProvider";
+import { ReportProvider } from "./components/ReportProvider";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -37,8 +38,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${spaceGrotesk.variable} ${inter.variable} antialiased`}>
         <RawDataProvider>
-          {children}
-          <Footer />
+          <ReportProvider>
+            {children}
+            <Footer />
+          </ReportProvider>
         </RawDataProvider>
         <Analytics />
       </body>

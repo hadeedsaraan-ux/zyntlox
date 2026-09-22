@@ -9,18 +9,18 @@ import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
 import Testimonials from "./components/Testimonials";
 import ProgressIndicator from "./components/ProgressIndicator";
-import { Report, ReportMode, ProgressStage, StreamEvent, RawScrapeData } from "./lib/types";
+import { Report, ProgressStage, StreamEvent, RawScrapeData } from "./lib/types";
 import { ExtractedSiteData } from "./lib/siteData";
 import { useRawData } from "./components/RawDataProvider";
+import { useReport } from "./components/ReportProvider";
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<ReportMode>("technical");
   const [activeStage, setActiveStage] = useState<ProgressStage | null>(null);
   const { setRawScrape } = useRawData();
+  const { report, setReport, mode, setMode, reportUrl, setReportUrl } = useReport();
 
   const handleRoast = async () => {
     if (!url) {
@@ -76,6 +76,7 @@ export default function Home() {
           } else if (event.type === "result") {
             setReport(event.data.report);
             setRawScrape(event.data.rawScrape);
+            setReportUrl(normalizedUrl);
           } else if (event.type === "error") {
             setError(event.error);
           }
@@ -154,7 +155,7 @@ export default function Home() {
             <h2 className="font-display text-2xl font-bold">Your Report</h2>
             <div className="flex items-center gap-2">
               <ModeToggle mode={mode} onChange={setMode} />
-              <ExportPdfButton report={report} mode={mode} url={url} />
+              <ExportPdfButton report={report} mode={mode} url={reportUrl} />
               <Link
                 href="/raw"
                 className="px-4 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] font-mono text-xs tracking-wide uppercase text-[var(--muted)] transition hover:text-[var(--text)] hover:border-[var(--amber)]"
@@ -163,7 +164,7 @@ export default function Home() {
               </Link>
             </div>
           </div>
-          <RoastReport report={report} mode={mode} />
+          <RoastReport report={report} mode={mode} editable onChange={setReport} />
         </div>
       ) : (
         <>

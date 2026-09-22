@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import { CheckStatus, Report, ReportMode } from "../types";
 import {
   LABELS,
@@ -12,15 +12,14 @@ import {
 import { usedBackupModel } from "../gemini";
 
 const COLORS = {
-  bg: "#1a1614",
-  bgCard: "#211c19",
-  ember: "#ff6b35",
-  amber: "#ffa940",
-  text: "#f5efe6",
-  muted: "#9c8f82",
-  border: "#342c26",
-  danger: "#e5484d",
-  success: "#7cb87f",
+  bg: "#ffffff",
+  bgCard: "#f7f7f8",
+  text: "#1a1a1a",
+  muted: "#6b7280",
+  border: "#e2e2e5",
+  danger: "#c0392b",
+  amber: "#b45309",
+  success: "#1e7e34",
 };
 
 const styles = StyleSheet.create({
@@ -47,6 +46,18 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.muted,
     marginTop: 4,
+  },
+  logo: {
+    maxWidth: 140,
+    maxHeight: 48,
+    marginBottom: 6,
+    objectFit: "contain",
+  },
+  disclaimer: {
+    fontSize: 8,
+    color: COLORS.muted,
+    marginTop: 6,
+    fontStyle: "italic",
   },
   card: {
     backgroundColor: COLORS.bgCard,
@@ -196,7 +207,7 @@ const styles = StyleSheet.create({
     lineHeight: 1.5,
   },
   codeBlock: {
-    backgroundColor: COLORS.bg,
+    backgroundColor: "#eef0f2",
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 4,
@@ -271,7 +282,7 @@ function cleanPdfText(str?: string | null): string {
 function scoreColor(score: number) {
   if (score >= 70) return COLORS.success;
   if (score >= 40) return COLORS.amber;
-  return COLORS.ember;
+  return COLORS.danger;
 }
 
 function statusColor(status: CheckStatus) {
@@ -284,12 +295,17 @@ export default function ReportDocument({
   report,
   mode,
   url,
+  agencyName,
+  agencyLogoDataUri,
 }: {
   report: Report;
   mode: ReportMode;
   url: string;
+  agencyName?: string;
+  agencyLogoDataUri?: string;
 }) {
   const labels = LABELS[mode];
+  const brandName = agencyName || "ZYNTLOX";
   const score = report.overallScore ?? 0;
   const gaugeColor = scoreColor(score);
   const generatedAt = new Date().toLocaleString("en-US", {
@@ -301,7 +317,8 @@ export default function ReportDocument({
     <Document title={`Zyntlox Report - ${cleanPdfText(url)}`}>
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header}>
-          <Text style={styles.wordmark}>ZYNTLOX</Text>
+          {agencyLogoDataUri && <Image src={agencyLogoDataUri} style={styles.logo} />}
+          <Text style={styles.wordmark}>{cleanPdfText(brandName)}</Text>
           <Text style={styles.meta}>{cleanPdfText(url)}</Text>
           <Text style={styles.meta}>
             Generated {generatedAt} · {mode === "plain" ? "Plain English" : "Technical"} mode
@@ -309,6 +326,9 @@ export default function ReportDocument({
           {usedBackupModel(report.modelUsed) && (
             <Text style={styles.meta}>{labels.backupModelNotice}</Text>
           )}
+          <Text style={styles.disclaimer}>
+            Generated with AI assistance — reviewed and, where needed, edited by the sender.
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -332,7 +352,7 @@ export default function ReportDocument({
         </View>
 
         <View style={styles.card}>
-          <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
+          <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
             {labels.firstImpression}
           </Text>
           <Text style={styles.bodyText}>
@@ -418,7 +438,7 @@ export default function ReportDocument({
               if (i === 0) {
                 return (
                   <View key={i} wrap={false}>
-                    <Text style={[styles.sectionTitle, { color: COLORS.danger }]}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
                       {labels.biggestProblems}
                     </Text>
                     {itemContent}
@@ -441,7 +461,7 @@ export default function ReportDocument({
               const itemContent = (
                 <View style={i > 0 ? { marginTop: 8 } : undefined}>
                   <View style={styles.listItem}>
-                    <Text style={[styles.listArrow, { color: COLORS.success }]}>&gt;</Text>
+                    <Text style={[styles.listArrow, { color: COLORS.text }]}>&gt;</Text>
                     <Text style={styles.listText}>
                       {cleanPdfText(mode === "plain" ? q.plainText : q.text)}
                     </Text>
@@ -462,7 +482,7 @@ export default function ReportDocument({
               if (i === 0) {
                 return (
                   <View key={i} wrap={false}>
-                    <Text style={[styles.sectionTitle, { color: COLORS.success }]}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
                       {labels.quickWins}
                     </Text>
                     {itemContent}
@@ -485,7 +505,7 @@ export default function ReportDocument({
               const itemContent = (
                 <View style={i > 0 ? { marginTop: 8 } : undefined}>
                   <View style={styles.listItem}>
-                    <Text style={[styles.listArrow, { color: COLORS.amber }]}>&gt;</Text>
+                    <Text style={[styles.listArrow, { color: COLORS.text }]}>&gt;</Text>
                     <Text style={styles.listText}>
                       {cleanPdfText(mode === "plain" ? s.plainText : s.text)}
                     </Text>
@@ -506,7 +526,7 @@ export default function ReportDocument({
               if (i === 0) {
                 return (
                   <View key={i} wrap={false}>
-                    <Text style={[styles.sectionTitle, { color: COLORS.amber }]}>
+                    <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
                       {labels.suggestions}
                     </Text>
                     {itemContent}
@@ -524,7 +544,7 @@ export default function ReportDocument({
         )}
 
         <View style={styles.footer} fixed>
-          <Text style={styles.footerTextLeft}>ZYNTLOX REPORT</Text>
+          <Text style={styles.footerTextLeft}>{cleanPdfText(brandName).toUpperCase()} REPORT</Text>
           <Text
             style={styles.footerTextRight}
             render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
