@@ -8,7 +8,20 @@ import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scorin
 import { criterionDef, criterionLabel, criterionWeight } from "../../lib/criteria";
 import { buildRoastParts, buildProseParts } from "../../lib/prompts";
 import { hostOf, logEvent } from "../../lib/log";
-import { Report, RawScrapeData } from "../../lib/types";
+import { Report, RawScrapeData, Problem, ActionItem } from "../../lib/types";
+
+// The prose call's JSON mode guarantees syntactically valid JSON, not schema conformance —
+// an occasional item comes back with a null/missing text field. Drop those rather than
+// shipping a blank card to the report.
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+function isValidProblem(p: unknown): p is Problem {
+  return !!p && typeof p === "object" && isNonEmptyString((p as Problem).issue);
+}
+function isValidActionItem(a: unknown): a is ActionItem {
+  return !!a && typeof a === "object" && isNonEmptyString((a as ActionItem).text);
+}
 
 export async function POST(request: NextRequest) {
   const { url } = await request.json();
@@ -150,6 +163,7 @@ export async function POST(request: NextRequest) {
         const res = await callGeminiWithRetry(
           buildProseParts({
             url,
+            firstImpression: aiReport.firstImpression ?? "",
             designScore,
             trustScore,
             uxScore,
@@ -172,9 +186,13 @@ export async function POST(request: NextRequest) {
 
       const report: Report = {
         ...aiReport,
-        biggestProblems: Array.isArray(prose.biggestProblems) ? prose.biggestProblems : [],
-        quickWins: Array.isArray(prose.quickWins) ? prose.quickWins : [],
-        suggestions: Array.isArray(prose.suggestions) ? prose.suggestions : [],
+        biggestProblems: Array.isArray(prose.biggestProblems)
+          ? prose.biggestProblems.filter(isValidProblem)
+          : [],
+        quickWins: Array.isArray(prose.quickWins) ? prose.quickWins.filter(isValidActionItem) : [],
+        suggestions: Array.isArray(prose.suggestions)
+          ? prose.suggestions.filter(isValidActionItem)
+          : [],
         designScore,
         trustScore,
         uxScore,

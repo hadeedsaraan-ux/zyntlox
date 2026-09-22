@@ -259,6 +259,7 @@ export function buildCompareParts(input: ComparePromptInput): GeminiPart[] {
 
 export interface ProsePromptInput {
   url: string;
+  firstImpression: string;
   designScore: number;
   trustScore: number;
   uxScore: number;
@@ -269,7 +270,8 @@ export interface ProsePromptInput {
   met: string[];
 }
 
-const PROSE_MIN = 3;
+const QUICKWINS_MIN = 3;
+const QUICKWINS_MAX = 5;
 const PROSE_MAX = 5;
 
 /**
@@ -286,9 +288,10 @@ export function buildProsePrompt(input: ProsePromptInput): string {
     ? "The site uses WordPress. Code snippets can be PHP or HTML/CSS."
     : "The site uses standard HTML/CSS. Code snippets MUST be plain HTML or CSS. NEVER output PHP.";
 
-  return `You are a brutally honest but helpful website reviewer. This page has ALREADY been assessed against a fixed checklist and scored by code. Your job is to turn those findings into advice the owner can act on.
+  return `You are a brutally honest but helpful website reviewer. This page has ALREADY been assessed against a fixed checklist and scored by code. Your job is to turn those findings into advice the owner can act on — not recite the checklist back at them.
 
 PAGE: ${input.url}
+WHAT THIS SITE APPEARS TO BE (use this to judge what actually matters for this business): ${input.firstImpression}
 SCORES (final — do not restate, dispute or output any numbers of your own): Design ${input.designScore}/10 · Trust ${input.trustScore}/10 · UX ${input.uxScore}/10 · Technical ${input.seoScore}/10 · Overall ${input.overallScore}/100
 TECH STACK: ${input.detectedStack}
 CODE SNIPPET RULE: ${stackCodeGuidance}
@@ -304,12 +307,15 @@ CRITICAL RULES FOR ADVICE:
 2. Do NOT invent issues that were not found. If an item is in the "GOT RIGHT" list (e.g. contact email found, viewport present, or headings present), you MUST NOT claim it is missing or broken.
 3. Do NOT state counts or measurements of your own. Never write a number that does not appear in the findings above.
 4. Field names are exact per array and must never cross over: biggestProblems items use "issue"/"plainIssue". quickWins and suggestions items use "text"/"plainText". Never put "plainIssue" on a quickWins or suggestions item, and never put "text" on a biggestProblems item.
+5. RELEVANCE FILTER for biggestProblems and suggestions (quickWins is exempt): before including a FAILED item, judge whether it would plausibly matter for a business like the one described above. A missing street address or business hours is a real problem for a local business or restaurant — it is noise for a SaaS product, an app, or a purely digital service. A missing refund policy matters for a store selling physical goods — it may not matter for a lead-gen or portfolio site. If a FAILED item would not plausibly cost this specific business visitors, leads, or trust, leave it out entirely rather than forcing it in. Do not pad to hit a count — a well-built site, or a site where most failures don't apply to its type of business, can honestly have fewer than the usual number of items, or none at all, in biggestProblems or suggestions.
+6. Every biggestProblems and suggestions item that IS included must say what it's costing this business — hesitation, lost leads, bouncing, lost trust — and end with the concrete fix, in one or two flowing sentences. Never a bare restatement of the finding (e.g. never just "No refund policy found").
+7. Never emit a placeholder item with a null, empty, or missing text field to fill space. If fewer items than usual are warranted, return a shorter array. If none are warranted, return an empty array ([]) for that section — an empty array is always valid and preferred over a hollow item.
 
-You MUST return between ${PROSE_MIN} and ${PROSE_MAX} items in EACH of the three sections. Order every list most-important first.
+Order every list most-important first. quickWins must have between ${QUICKWINS_MIN} and ${QUICKWINS_MAX} items (those are exempt from the relevance filter — any genuinely 10-30-minute fix is fair game). biggestProblems and suggestions should each have up to ${PROSE_MAX} items — after applying rules 5 and 6, include as many as are genuinely warranted, even if that's fewer than usual.
 
-  - biggestProblems: what is costing this site visitors or credibility right now.
+  - biggestProblems: what is costing this business visitors, leads, or trust right now, after the relevance filter.
   - quickWins: genuinely fixable in 10-30 minutes each.
-  - suggestions: larger or more strategic changes worth planning.
+  - suggestions: larger or more strategic changes worth planning, after the relevance filter.
 
 CODE SNIPPETS:
 Include a "snippet" only where the fix is a concrete, ready-to-paste code change (a contrast fix, a heading structure fix, a button style). Follow the CODE SNIPPET RULE above strictly. Where the item is content, copy or strategy advice, set "snippet" to null. Do not force a snippet where one does not make sense.
@@ -319,17 +325,17 @@ For every text field, provide TWO versions: a "technical" version (terms like UX
 Return ONLY valid JSON (no markdown, no backticks, no extra text) in exactly this structure:
 {
   "biggestProblems": [
-    {"issue": "<name the real consequence for a visitor on this page — hesitation, lost leads, bouncing, lost trust — then end the same sentence with the concrete fix. Never a bare restatement like 'No refund policy found'>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
+    {"issue": "<name the real consequence for a visitor on this page — hesitation, lost leads, bouncing, lost trust — then end the same sentence with the concrete fix. Never a bare restatement like 'No refund policy found'. Only include if it survives the relevance filter (rule 5)>", "plainIssue": "<same problem, plain English>", "impact": "High|Medium|Low", "effort": "Easy|Medium|Hard"}
   ],
   "quickWins": [
     {"text": "<technical, fixable in 10-30 min, short and direct — no consequence narrative needed>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
   ],
   "suggestions": [
-    {"text": "<a bigger strategic move worth planning — tie it to how it would change visitor behavior or business results, and say what to build or change. Skip flat statements of the finding itself>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
+    {"text": "<a bigger strategic move worth planning — tie it to how it would change visitor behavior or business results, and say what to build or change. Skip flat statements of the finding itself. Only include if it survives the relevance filter (rule 5)>", "plainText": "<same, plain English>", "snippet": {"language": "html|css|jsx|js|php", "code": "<ready-to-paste fix>"} or null}
   ]
 }
 
-Remember: ${PROSE_MIN}-${PROSE_MAX} items in each of the three arrays. Remember rule 4: biggestProblems uses "issue"/"plainIssue", quickWins and suggestions use "text"/"plainText" — never mix them up.`;
+Remember rule 4: biggestProblems uses "issue"/"plainIssue", quickWins and suggestions use "text"/"plainText" — never mix them up. Remember rule 5: it is correct to return fewer items, or none, in biggestProblems/suggestions rather than including something irrelevant to this type of business.`;
 }
 
 export function buildProseParts(input: ProsePromptInput): GeminiPart[] {
