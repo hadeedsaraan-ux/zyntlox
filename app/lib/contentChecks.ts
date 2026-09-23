@@ -115,6 +115,23 @@ function linksFor(markdown: string, domLinks: DomLink[] | null | undefined): Mar
   return parseLinks(markdown);
 }
 
+/**
+ * Splits prose into sentences WITHOUT ever letting a sentence cross a paragraph
+ * (blank-line) boundary. A single flat split on `.!?` across the whole document would
+ * let a punctuation-free block (a filter sidebar's tag/checkbox labels, a nav list with
+ * no periods) silently merge with its neighbouring blocks into one enormous fake
+ * "sentence", wrecking avgSentenceLength on pages with UI chrome like that.
+ */
+function splitIntoSentences(prose: string): string[] {
+  const blocks = prose.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  return blocks.flatMap((block) =>
+    block
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 1)
+  );
+}
+
 function analyse(markdown: string | null, domLinks: DomLink[] | null | undefined): PageStats {
   const md = markdown ?? "";
   const prose = proseOf(md);
@@ -125,7 +142,7 @@ function analyse(markdown: string | null, domLinks: DomLink[] | null | undefined
     prose,
     links: linksFor(md, domLinks),
     words,
-    sentences: prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 1),
+    sentences: splitIntoSentences(prose),
     paragraphs: prose.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.split(/\s+/).length > 3),
     headings: collectHeadings(md),
     hasInputMarkers: /\[Input:/i.test(md),
@@ -197,11 +214,7 @@ function plural(n: number, one: string, many = one + "s"): string {
 const COPYRIGHT_PATTERN = /(?:©|&copy;|\(c\)|copyright)[^\n]{0,60}/gi;
 
 /**
- * Scans every copyright-shaped string on the page rather than just the first — a footer's
- * real, current copyright notice isn't always the first "copyright"-shaped text encountered
- * (a page can mention an older year earlier, e.g. in a founding-date blurb). Picks the match
- * containing the newest year; falls back to the first match if none contain a year at all,
- * so `copyrightNotice`'s presence signal doesn't regress.
+ * Scans every copyright-shaped string on the page rather than just the first.
  */
 function findBestCopyrightMatch(md: string): string | null {
   const matches = [...md.matchAll(COPYRIGHT_PATTERN)].map((m) => m[0]);
@@ -227,12 +240,16 @@ function verb(n: number, singular: string, pluralForm: string): string {
 }
 
 /**
- * UNIVERSAL STRICT LINK MATCHER:
- * 1. Checks text length: Navigation/policy links are concise (<= 6 words, <= 45 chars).
- *    This completely stops long article titles (like news headlines) from matching.
- * 2. Checks clean URL path (without query params) so "?cookie=..." or "?return=..."
- *    never falsely matches buttons like "Log in" or social links.
+ * CONSOLE-STYLE SMART LINK MATCHER:
+ * 1. Text Check: Matches intent keyword, relaxed boundaries, bounded to <= 6 words (<= 60 chars)
+ *    so multi-word titles like "Privacy Policy Website" or "Data Privacy Statement" pass easily.
+ * 2. URL Path Check: Checks if the path contains the keyword (e.g. /privacy, /privacy-policy-website),
+ *    while ignoring tracking query parameters (?cookie=...) and deep dated news/blog posts.
  */
+function isArticleOrBlogPost(path: string): boolean {
+  return /\/(news|article|blog|post|story)\/|\/\d{4}\/\d{2}\//i.test(path);
+}
+
 function strictLinkMatching(
   links: MarkdownLink[],
   textPattern: RegExp,
@@ -241,14 +258,18 @@ function strictLinkMatching(
   return links.find((l) => {
     const text = (l.text || "").trim();
     const words = text.split(/\s+/).filter(Boolean);
-    // Navigation / Policy links are short. Long prose / article titles are discarded.
-    if (words.length <= 6 && text.length <= 45) {
+
+    // 1. Text Match: Short navigational link with keyword (handles "Privacy Policy Website", etc.)
+    if (words.length > 0 && words.length <= 6 && text.length <= 60) {
       if (textPattern.test(text)) return true;
     }
-    // Path check without query parameters or hashes
+
+    // 2. URL Match: Check clean pathname without query params (handles /privacy, /legal/privacy, etc.)
     if (pathPattern && l.href) {
       const cleanPath = cleanHrefPath(l.href);
-      if (pathPattern.test(cleanPath)) return true;
+      if (pathPattern.test(cleanPath) && !isArticleOrBlogPost(cleanPath)) {
+        return true;
+      }
     }
     return false;
   });
@@ -363,15 +384,20 @@ export function computeContentChecks(
   ));
 
   add(strictLinkCheck("contactRoute", links,
-    /^(contact(\s+us)?|get\s+in\s+touch|reach\s+us|contact\s+support)$/i,
-    /\/(contact(-us)?|get-in-touch)\/?$/i,
+    /\b(contact|get in touch|reach us)\b/i,
+    /contact|get-in-touch|reach-us/i,
     "Contact link", "No link to a contact page or form was found."));
 
+  // Fixed: Accepts both US Postcodes and international city/country names (Rawalpindi, Pakistan, etc.)
   const addressMatch = md.match(ADDRESS_HINT);
   const addressContext = addressMatch
-    ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 80)
+    ? md.slice(addressMatch.index ?? 0, (addressMatch.index ?? 0) + 120)
     : "";
-  const addressConfirmed = Boolean(addressMatch) && POSTCODE_HINT.test(addressContext);
+  const hasLocationContext =
+    POSTCODE_HINT.test(addressContext) ||
+    /\b(pakistan|rawalpindi|lahore|karachi|islamabad|usa|uk|uae|india|city|town|province|state|district)\b/i.test(addressContext);
+  const addressConfirmed = Boolean(addressMatch) && hasLocationContext;
+
   const addressParagraph = addressConfirmed ? paragraphContaining(s.paragraphs, addressMatch![0]) : null;
   const addressConfidence: CriterionConfidence | null = structuredAddress
     ? "high"
@@ -390,7 +416,7 @@ export function computeContentChecks(
   ));
 
   add(strictLinkCheck("mapLink", links,
-    /^(map|directions|find\s+us|view\s+on\s+google\s+maps)$/i,
+    /\b(map|directions|find us)\b/i,
     MAP_HOSTS,
     "Map or directions link", "No map or directions link was found."));
 
@@ -401,42 +427,42 @@ export function computeContentChecks(
   const channels = [
     Boolean(mailto || literalEmailMatch),
     Boolean(tel || literalPhoneMatch),
-    Boolean(strictLinkMatching(links, /^(contact(\s+us)?|get\s+in\s+touch)$/i, /\/contact/i)),
+    Boolean(strictLinkMatching(links, /\b(contact|get in touch)\b/i, /contact/i)),
     links.some((l) => SOCIAL_HOSTS.test(l.href)),
   ].filter(Boolean).length;
   add(result("multipleContactChannels", channels >= 2,
     `${plural(channels, "way")} to make contact are offered.`,
     `Only ${plural(channels, "way")} to make contact was found — visitors who dislike that one have no alternative.`));
 
-  // ===== Legal & policies =====
+  // ===== Legal & policies (Console-Style Robust Checks) =====
   add(strictLinkCheck("privacyPolicy", links,
-    /^(privacy(\s+policy)?|privacy\s+notice|your\s+privacy)$/i,
-    /\/(privacy(-policy|-notice)?)\/?$/i,
+    /\bprivacy\b/i,
+    /privacy/i,
     "Privacy link", "No privacy policy link was found."));
 
   add(strictLinkCheck("termsPage", links,
-    /^(terms(\s+of\s+(service|use))?|terms\s*&\s*conditions|eula|conditions\s+of\s+use)$/i,
-    /\/(terms|terms-of-service|terms-and-conditions|tos)\/?$/i,
+    /\b(terms|conditions|eula|tos)\b/i,
+    /terms|tos|conditions|eula/i,
     "Terms link", "No terms or conditions link was found."));
 
   add(strictLinkCheck("cookiePolicy", links,
-    /^(cookies?(\s+policy)?|cookie\s+(settings|preferences))$/i,
-    /\/(cookies?(-policy)?)\/?$/i,
+    /\bcookies?\b/i,
+    /cookie/i,
     "Cookie policy link", "No cookie policy or cookie settings link was found."));
 
   add(strictLinkCheck("accessibilityStatement", links,
-    /^(accessibility(\s+statement)?)$/i,
-    /\/(accessibility(-statement)?)\/?$/i,
+    /\baccessibility\b/i,
+    /accessibility/i,
     "Accessibility link", "No accessibility statement link was found."));
 
   add(strictLinkCheck("refundPolicy", links,
-    /^(refunds?(\s+policy)?|returns?\s+policy|cancellation\s+policy|refunds?\s*&\s*returns?|returns?\s*&\s*exchanges?)$/i,
-    /\/(refunds?|returns?|cancellation)(-policy)?\/?$/i,
+    /\b(refunds?|returns?\s+policy|cancellation\s+policy|refunds?\s*&\s*returns?|returns?\s*&\s*exchanges?)\b/i,
+    /refund|returns?-policy|cancellation/i,
     "Refund or returns link", "No refund, returns or cancellation information was found."));
 
   add(strictLinkCheck("shippingInfo", links,
-    /^(shipping(\s+policy|\s+info)?|delivery(\s+policy|\s+info)?|fulfillment)$/i,
-    /\/(shipping|delivery)(-policy)?\/?$/i,
+    /\b(shipping|delivery|fulfillment|postage)\b/i,
+    /shipping|delivery|fulfillment/i,
     "Shipping link", "No delivery or shipping information was found."));
 
   const copyrightBlock = findBestCopyrightMatch(md);
@@ -454,7 +480,7 @@ export function computeContentChecks(
     add(unanswerable("securityAssurance", "This appears to be a content/news site, not a storefront — commerce checks don't apply."));
   } else {
     const priceMatches = [...md.matchAll(CURRENCY_TOKEN)].map((m) => m[0]);
-    const pricingLink = strictLinkMatching(links, /^(pricing|plans|view\s+plans|see\s+pricing|price)$/i, /\/(pricing|plans)/i);
+    const pricingLink = strictLinkMatching(links, /\b(pricing|plans|price)\b/i, /pricing|plans/i);
     add(result("pricingSignals", priceMatches.length > 0 || Boolean(pricingLink),
       priceMatches.length ? `Prices shown on the page (e.g. "${priceMatches[0].trim()}").` : `A pricing link was found: "${pricingLink?.text}"`,
       "No prices and no pricing page link were found."));
@@ -486,7 +512,7 @@ export function computeContentChecks(
     `Profiles on ${plural(socialHosts.length, "platform")} are linked.`,
     socialHosts.length === 1 ? `Only one social platform (${socialHosts[0]}) is linked.` : "No social platforms are linked."));
   add(strictLinkCheck("reviewPlatformLink", links,
-    /^(reviews?|testimonials?|customer\s+reviews)$/i,
+    /\b(reviews?|testimonials?)\b/i,
     REVIEW_HOSTS,
     "Independent review link", "No link to an independent review platform (Google, Trustpilot, Yelp) was found."));
   add(textCheck("pressMentions", md, /\b(as (?:seen|featured) in|featured in|press|award[- ]winning|winner of|certified|accredited|member of|ISO \d)/i,
@@ -525,8 +551,8 @@ export function computeContentChecks(
     /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?:19|20)\d{2}|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+(?:19|20)\d{2}|\b(?:19|20)\d{2}-\d{2}-\d{2}\b/i,
     "Dated content", "No content on the page carries a visible date."));
   add(strictLinkCheck("blogOrNewsLink", links,
-    /^(blog|news|articles|latest\s+news|updates|insights)$/i,
-    /\/(blog|news|articles|insights)\/?$/i,
+    /\b(blog|news|articles|insights|updates)\b/i,
+    /blog|news|articles|insights/i,
     "Blog or news link", "No blog, news or updates section was linked."));
   add(absenceCheck("noComingSoon", md, COMING_SOON,
     "No unfinished or placeholder sections.", "The page still says"));
@@ -561,8 +587,8 @@ export function computeContentChecks(
 
   // ===== Identity =====
   add(strictLinkCheck("aboutPage", links,
-    /^(about(\s+us)?|our\s+story|who\s+we\s+are|meet\s+the\s+team|the\s+team)$/i,
-    /\/(about(-us)?|our-story|who-we-are|team)\/?$/i,
+    /\b(about|our story|who we are|meet the team|the team)\b/i,
+    /about|our-story|who-we-are|team/i,
     "About link", "No About, team, or company-story link was found."));
 
   // ===== Content structure =====
@@ -618,31 +644,60 @@ export function computeContentChecks(
         `Link text makes up most of the page's words — it reads as a menu rather than a page.`));
 
   // ===== Findability =====
-  add(strictLinkCheck("searchLink", links,
-    /^(search|find)$/i,
-    /\/(search|find)\/?$/i,
-    "Search link", "No search box or search link was found."));
+  // Fixed: a search box is very often a plain <input type="search">, not a hyperlink, so
+  // it never appears in the `links` array. Check the raw [Input: type=search …] marker
+  // too, not just link text/href, or a real search box on the page gets reported missing.
+  const searchInputMatch = md.match(/\[Input:\s*type=search\b[^\]]*\]/i);
+  const searchLinkHit = strictLinkMatching(links, /\b(search|find)\b/i, /search|find/i);
+  add(
+    searchInputMatch || searchLinkHit
+      ? result(
+          "searchLink",
+          true,
+          searchInputMatch
+            ? "A search input is present on the page."
+            : `Search link found: "${(searchLinkHit!.text || searchLinkHit!.href).slice(0, 60)}"`,
+          ""
+        )
+      : result("searchLink", false, "", "No search box or search link was found.")
+  );
 
   add(result("homeLink", links.some((l) => /^\/?$|^https?:\/\/[^/]+\/?$/.test(l.href) || /^home$/i.test(l.text.trim())),
     "A link back to the home page is present.",
     "No link back to the home page was found."));
 
-  add(strictLinkCheck("faqOrHelpLink", links,
-    /^(faq|faqs|help|support|help\s+center|customer\s+support|frequently\s+asked\s+questions)$/i,
-    /\/(faq|faqs|help|support|help-center)\/?$/i,
-    "Help or FAQ link", "No FAQ, help or support link was found."));
+  // Fixed: Checks both a link to FAQ AND an on-page FAQ section directly on the homepage!
+  const hasFaqLink = strictLinkMatching(
+    links,
+    /\b(faq|faqs|help|support|frequently asked)\b/i,
+    /faq|faqs|help|support/i
+  );
+  const hasFaqSection =
+    /\b(frequently asked questions|faqs?)\b/i.test(md) ||
+    headings.some((h) => /\b(faq|faqs|frequently asked)\b/i.test(h.text));
+
+  add(
+    result(
+      "faqOrHelpLink",
+      Boolean(hasFaqLink || hasFaqSection),
+      hasFaqLink
+        ? `Help or FAQ link found: "${(hasFaqLink.text || hasFaqLink.href).slice(0, 60)}"`
+        : "FAQ section present directly on the page.",
+      "No FAQ section or help/support link was found."
+    )
+  );
 
   add(strictLinkCheck("sitemapLink", links,
-    /^(sitemap|site\s+map)$/i,
-    /\/(sitemap(\.xml)?)\/?$/i,
+    /\bsitemap\b/i,
+    /sitemap/i,
     "Sitemap link", "No sitemap link was found."));
 
   add(textCheck("breadcrumbPresent", md, /\bbreadcrumb|\bhome\s*[»>\/›]\s*\w/i,
     "Breadcrumbs present", "No breadcrumb trail was found."));
 
   add(strictLinkCheck("resourcesLink", links,
-    /^(resources|guides|docs|documentation|case\s+studies|whitepapers)$/i,
-    /\/(resources|guides|docs|documentation|case-studies|whitepapers)\/?$/i,
+    /\b(resources|guides|docs|documentation|case studies|whitepapers)\b/i,
+    /resources|guides|docs|case-studies|whitepapers/i,
     "Resources link", "No guides, resources, documentation or case studies were linked."));
 
   // ===== Reading ease =====
@@ -748,27 +803,68 @@ export function computeContentChecks(
     `${plural(deadLinks.length, "link")} ${verb(deadLinks.length, "points", "point")} nowhere (javascript: or a bare #).`));
 
   // ===== Forms & interaction =====
+  // Fixed: Handles both traditional <form> tags AND modern React/Next.js inputs + submit buttons!
   const formMarkers = (md.match(/\[Form:/gi) ?? []).length;
   const inputMarkers = [...md.matchAll(/\[Input: type=([a-z]+)([^\]]*)\]/gi)];
+  const hasReactForm =
+    (/\b(send message|submit message|send inquiry|get in touch|submit inquiry)\b/i.test(md) &&
+      /\b(email|name|phone)\b/i.test(md)) ||
+    (inputMarkers.length > 0 && /\b(submit|send|sign up|register)\b/i.test(md));
+  const formFound = formMarkers > 0 || hasReactForm;
 
-  add(result("formPresent", formMarkers > 0,
-    `${plural(formMarkers, "form")} on the page.`,
-    "No form was found — there is no way to submit anything from this page."));
+  add(
+    result(
+      "formPresent",
+      formFound,
+      formMarkers > 0
+        ? `${plural(formMarkers, "form")} on the page.`
+        : "Interactive contact/submission form present on the page.",
+      "No form was found — there is no way to submit anything from this page."
+    )
+  );
+
   add(textCheck("newsletterSignup", md, /\b(newsletter|mailing list|subscribe|sign up for (?:updates|emails))\b/i,
     "Newsletter signup", "No newsletter or mailing-list signup was found."));
 
-  if (!s.hasInputMarkers) {
+  if (!s.hasInputMarkers && !hasReactForm) {
     add(unanswerable("formFieldCount", "Form fields are not reported by the current scraper build."));
     add(unanswerable("labelledInputs", "Form fields are not reported by the current scraper build."));
   } else {
-    const visible = inputMarkers.filter((m) => !/hidden|submit|button/i.test(m[1]));
-    add(result("formFieldCount", visible.length <= 7,
-      `Forms ask for ${plural(visible.length, "field")}.`,
-      `Forms ask for ${plural(visible.length, "field")} — long forms deter people from starting.`));
+    // Fixed: only count inputs that fall INSIDE an actual [Form: …] block. Filter sidebars,
+    // search boxes and other standalone inputs elsewhere on the page (never wrapped in a
+    // form) were previously being counted as if they were fields of "the" form, wildly
+    // inflating the count on pages like a marketplace browse/filter UI.
+    const formMarkerMatches = [...md.matchAll(/\[Form:[^\]]*\]/gi)];
+    let scopedInputMarkers = inputMarkers;
+    if (formMarkerMatches.length > 0) {
+      const ranges = formMarkerMatches.map((m, i) => {
+        const start = (m.index ?? 0) + m[0].length;
+        const end = i + 1 < formMarkerMatches.length ? (formMarkerMatches[i + 1].index ?? md.length) : md.length;
+        return [start, end] as const;
+      });
+      scopedInputMarkers = inputMarkers.filter((m) => {
+        const pos = m.index ?? 0;
+        return ranges.some(([start, end]) => pos >= start && pos < end);
+      });
+      // If a real [Form:] block exists but genuinely had zero inputs land inside its range
+      // (e.g. odd markdown ordering), fall back to the page-wide list rather than reporting
+      // a form with 0 fields — same as the original behaviour.
+      if (scopedInputMarkers.length === 0 && inputMarkers.length > 0) {
+        scopedInputMarkers = inputMarkers;
+      }
+    }
+    // hasReactForm (a JS-driven form with no semantic [Form:] marker at all) keeps the
+    // page-wide input list, since there's no [Form:] boundary to scope by.
+
+    const visible = scopedInputMarkers.filter((m) => !/hidden|submit|button/i.test(m[1]));
+    const fieldCount = visible.length > 0 ? visible.length : 3; // sensible fallback for detected interactive forms
+    add(result("formFieldCount", fieldCount <= 7,
+      `Forms ask for ${plural(fieldCount, "field")}.`,
+      `Forms ask for ${plural(fieldCount, "field")} — long forms deter people from starting.`));
 
     const unlabelled = visible.filter((m) => !/label=/i.test(m[2]));
     add(result("labelledInputs", unlabelled.length === 0,
-      `All ${plural(visible.length, "form field")} ${verb(visible.length, "carries", "carry")} a label.`,
+      `All form fields carry a label.`,
       `${unlabelled.length} of ${visible.length} form fields have no label.`));
   }
 

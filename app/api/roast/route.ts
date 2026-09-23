@@ -163,7 +163,6 @@ export async function POST(request: NextRequest) {
         const res = await callGeminiWithRetry(
           buildProseParts({
             url,
-            firstImpression: aiReport.firstImpression ?? "",
             designScore,
             trustScore,
             uxScore,
