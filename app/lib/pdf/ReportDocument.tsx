@@ -34,7 +34,10 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica",
   },
   header: {
-    marginBottom: 16,
+    marginBottom: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1.5,
+    borderBottomColor: COLORS.border,
   },
   wordmark: {
     fontFamily: "Helvetica-Bold",
@@ -63,68 +66,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgCard,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 6,
+    padding: 16,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontFamily: "Helvetica-Bold",
     fontSize: 10,
-    letterSpacing: 1,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
+    marginBottom: 9,
+  },
+  leadTitle: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 13,
+    letterSpacing: 0.2,
     marginBottom: 8,
+    color: COLORS.text,
   },
   bodyText: {
     fontSize: 10,
     lineHeight: 1.5,
     color: COLORS.text,
   },
-  scoreRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  scoreValue: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 28,
-  },
-  scoreBarTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.border,
-    marginTop: 10,
-  },
-  scoreBarFill: {
-    height: 8,
-    borderRadius: 4,
-  },
-  subScoreGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 10,
-  },
-  subScoreCard: {
-    flexBasis: "23%",
-    flexGrow: 1,
-    backgroundColor: COLORS.bgCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 10,
-    alignItems: "center",
-  },
-  subScoreLabel: {
-    fontSize: 8,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+  emptyStateText: {
+    fontSize: 10,
+    lineHeight: 1.5,
     color: COLORS.muted,
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  subScoreValue: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 16,
+    fontStyle: "italic",
   },
   seoCheckRow: {
     flexDirection: "row",
@@ -238,6 +207,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: 0.75,
+    borderTopColor: COLORS.border,
   },
   footerTextLeft: {
     fontSize: 8,
@@ -279,12 +251,6 @@ function cleanPdfText(str?: string | null): string {
   );
 }
 
-function scoreColor(score: number) {
-  if (score >= 70) return COLORS.success;
-  if (score >= 40) return COLORS.amber;
-  return COLORS.danger;
-}
-
 function statusColor(status: CheckStatus) {
   if (status === "pass") return COLORS.success;
   if (status === "warn") return COLORS.amber;
@@ -306,8 +272,6 @@ export default function ReportDocument({
 }) {
   const labels = LABELS[mode];
   const brandName = agencyName || "ZYNTLOX";
-  const score = report.overallScore ?? 0;
-  const gaugeColor = scoreColor(score);
   const generatedAt = new Date().toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -332,49 +296,10 @@ export default function ReportDocument({
         </View>
 
         <View style={styles.card}>
-          <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
-            Overall Score
-          </Text>
-          <View style={styles.scoreRow}>
-            <Text style={[styles.scoreValue, { color: gaugeColor }]}>
-              {score}
-              <Text style={{ fontSize: 12, color: COLORS.muted }}>/100</Text>
-            </Text>
-          </View>
-          <View style={styles.scoreBarTrack}>
-            <View
-              style={[
-                styles.scoreBarFill,
-                { width: `${Math.max(0, Math.min(100, score))}%`, backgroundColor: gaugeColor },
-              ]}
-            />
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
-            {labels.firstImpression}
-          </Text>
+          <Text style={styles.leadTitle}>{labels.firstImpression}</Text>
           <Text style={styles.bodyText}>
             {cleanPdfText(mode === "plain" ? report.plainFirstImpression : report.firstImpression)}
           </Text>
-        </View>
-
-        <View style={styles.subScoreGrid}>
-          {[
-            { label: labels.design, value: report.designScore },
-            { label: labels.trust, value: report.trustScore },
-            { label: labels.ux, value: report.uxScore },
-            { label: labels.seo, value: report.seoScore },
-          ].map((s) => (
-            <View key={s.label} style={styles.subScoreCard}>
-              <Text style={styles.subScoreLabel}>{s.label}</Text>
-              <Text style={styles.subScoreValue}>
-                {s.value}
-                <Text style={{ fontSize: 9, color: COLORS.muted }}>/10</Text>
-              </Text>
-            </View>
-          ))}
         </View>
 
         {report.seoChecks && (
@@ -419,8 +344,16 @@ export default function ReportDocument({
           </View>
         )}
 
-        {report.biggestProblems && report.biggestProblems.length > 0 && (
+        {report.biggestProblems && (
           <View style={styles.card} wrap>
+            {report.biggestProblems.length === 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
+                  {labels.biggestProblems}
+                </Text>
+                <Text style={styles.emptyStateText}>No major problems found here — nice work.</Text>
+              </>
+            )}
             {report.biggestProblems.map((p, i) => {
               const itemContent = (
                 <View
@@ -499,8 +432,16 @@ export default function ReportDocument({
           </View>
         )}
 
-        {report.suggestions && report.suggestions.length > 0 && (
+        {report.suggestions && (
           <View style={styles.card} wrap>
+            {report.suggestions.length === 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
+                  {labels.suggestions}
+                </Text>
+                <Text style={styles.emptyStateText}>Nothing further to suggest right now.</Text>
+              </>
+            )}
             {report.suggestions.map((s, i) => {
               const itemContent = (
                 <View style={i > 0 ? { marginTop: 8 } : undefined}>

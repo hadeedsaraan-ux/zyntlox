@@ -9,7 +9,6 @@ import {
   groupSeoChecks,
 } from "../lib/labels";
 import { usedBackupModel } from "../lib/gemini";
-import ScoreGauge from "./ScoreGauge";
 import CodeSnippet from "./CodeSnippet";
 
 function statusDotClass(status: CheckStatus): string {
@@ -35,12 +34,9 @@ export default function RoastReport({
   onChange?: (updated: Report) => void;
 }) {
   const labels = LABELS[mode];
-  const score = report.overallScore ?? 0;
 
   const content = (
     <div className="space-y-5">
-      <ScoreGauge score={score} />
-
       {editable && (
         <p className="text-center font-mono text-[10px] text-[var(--muted)] italic">
           Generated with AI — click any highlighted text below to fix a detail before sharing.
@@ -72,29 +68,6 @@ export default function RoastReport({
             {labels.backupModelNotice}
           </p>
         )}
-      </div>
-
-      {/* Sub Scores */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: labels.design, value: report.designScore },
-          { label: labels.trust, value: report.trustScore },
-          { label: labels.ux, value: report.uxScore },
-          { label: labels.seo, value: report.seoScore },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 text-center"
-          >
-            <p className="font-mono text-[10px] tracking-widest text-[var(--muted)] uppercase mb-1">
-              {s.label}
-            </p>
-            <p className="font-mono text-2xl font-bold">
-              {s.value}
-              <span className="text-sm text-[var(--muted)]">/10</span>
-            </p>
-          </div>
-        ))}
       </div>
 
       {/* Technical SEO Checks */}
@@ -169,6 +142,11 @@ export default function RoastReport({
           ❌ {labels.biggestProblems}
         </h3>
         <div className="space-y-4">
+          {report.biggestProblems && report.biggestProblems.length === 0 && (
+            <p className="text-[var(--text)] opacity-90">
+              No major problems found here — nice work.
+            </p>
+          )}
           {report.biggestProblems?.map((p, i) => (
             <div key={i} className="dotted-divider pt-4 first:pt-0 first:border-0">
               {editable ? (
@@ -244,6 +222,11 @@ export default function RoastReport({
           💡 {labels.suggestions}
         </h3>
         <ul className="space-y-3">
+          {report.suggestions && report.suggestions.length === 0 && (
+            <li className="text-[var(--text)] opacity-90">
+              Nothing further to suggest right now.
+            </li>
+          )}
           {report.suggestions?.map((s, i) => (
             <li key={i} className="text-[var(--text)] opacity-90">
               <div className="flex gap-2">

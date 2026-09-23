@@ -4,10 +4,6 @@ export const LABELS: Record<
   ReportMode,
   {
     firstImpression: string;
-    design: string;
-    trust: string;
-    ux: string;
-    seo: string;
     biggestProblems: string;
     quickWins: string;
     suggestions: string;
@@ -18,10 +14,6 @@ export const LABELS: Record<
 > = {
   technical: {
     firstImpression: "First Impression",
-    design: "Design",
-    trust: "Trust",
-    ux: "UX",
-    seo: "SEO",
     biggestProblems: "Biggest Problems",
     quickWins: "Quick Wins",
     suggestions: "AI Suggestions",
@@ -34,10 +26,6 @@ export const LABELS: Record<
   },
   plain: {
     firstImpression: "What Visitors See",
-    design: "Looks",
-    trust: "Trustworthiness",
-    ux: "Ease of Use",
-    seo: "Found on Google?",
     biggestProblems: "What's Hurting You",
     quickWins: "Easy Fixes",
     suggestions: "What To Do Next",
