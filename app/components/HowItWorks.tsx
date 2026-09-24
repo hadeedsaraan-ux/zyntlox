@@ -1,7 +1,7 @@
 const steps = [
   { number: "01", title: "Paste URL", description: "Drop in the link to any website you want feedback on." },
   { number: "02", title: "AI Analyzes", description: "We scan the page and screenshot it, then hand it to AI for review." },
-  { number: "03", title: "Get Report", description: "Receive a scored, actionable breakdown in under 60 seconds." },
+  { number: "03", title: "Get Report", description: "Receive an honest, actionable breakdown in under 60 seconds." },
 ];
 
 export default function HowItWorks() {

@@ -8,6 +8,7 @@ import ExportPdfButton from "./components/ExportPdfButton";
 import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
 import Testimonials from "./components/Testimonials";
+import FAQ from "./components/FAQ";
 import ProgressIndicator from "./components/ProgressIndicator";
 import { Report, ProgressStage, StreamEvent, RawScrapeData } from "./lib/types";
 import { ExtractedSiteData } from "./lib/siteData";
@@ -171,6 +172,7 @@ export default function Home() {
           <HowItWorks />
           <SampleReportPreview />
           <Testimonials />
+          <FAQ />
         </>
       )}
     </main>
