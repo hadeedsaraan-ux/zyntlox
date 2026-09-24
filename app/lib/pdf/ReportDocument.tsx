@@ -9,7 +9,7 @@ import {
   formatSeoCheckDetail,
   groupSeoChecks,
 } from "../labels";
-import { usedBackupModel } from "../gemini";
+import { reportUsedBackupModel } from "../gemini";
 
 const COLORS = {
   bg: "#ffffff",
@@ -287,7 +287,7 @@ export default function ReportDocument({
           <Text style={styles.meta}>
             Generated {generatedAt} · {mode === "plain" ? "Plain English" : "Technical"} mode
           </Text>
-          {usedBackupModel(report.modelUsed) && (
+          {reportUsedBackupModel(report) && (
             <Text style={styles.meta}>{labels.backupModelNotice}</Text>
           )}
           <Text style={styles.disclaimer}>
@@ -351,7 +351,11 @@ export default function ReportDocument({
                 <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
                   {labels.biggestProblems}
                 </Text>
-                <Text style={styles.emptyStateText}>No major problems found here — nice work.</Text>
+                <Text style={styles.emptyStateText}>
+                  {report.proseUnavailable
+                    ? labels.proseUnavailableNotice
+                    : "No major problems found here — nice work."}
+                </Text>
               </>
             )}
             {report.biggestProblems.map((p, i) => {
@@ -439,7 +443,11 @@ export default function ReportDocument({
                 <Text style={[styles.sectionTitle, { color: COLORS.muted }]}>
                   {labels.suggestions}
                 </Text>
-                <Text style={styles.emptyStateText}>Nothing further to suggest right now.</Text>
+                <Text style={styles.emptyStateText}>
+                  {report.proseUnavailable
+                    ? labels.proseUnavailableNotice
+                    : "Nothing further to suggest right now."}
+                </Text>
               </>
             )}
             {report.suggestions.map((s, i) => {

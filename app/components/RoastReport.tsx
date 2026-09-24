@@ -8,7 +8,7 @@ import {
   formatSeoCheckDetail,
   groupSeoChecks,
 } from "../lib/labels";
-import { usedBackupModel } from "../lib/gemini";
+import { reportUsedBackupModel } from "../lib/gemini";
 import CodeSnippet from "./CodeSnippet";
 
 function statusDotClass(status: CheckStatus): string {
@@ -63,9 +63,14 @@ export default function RoastReport({
             {mode === "plain" ? report.plainFirstImpression : report.firstImpression}
           </p>
         )}
-        {usedBackupModel(report.modelUsed) && (
+        {reportUsedBackupModel(report) && (
           <p className="font-mono text-[10px] text-[var(--muted)] mt-2">
             {labels.backupModelNotice}
+          </p>
+        )}
+        {report.noScreenshot && (
+          <p className="font-mono text-[10px] text-[var(--muted)] mt-2">
+            {labels.noScreenshotNotice}
           </p>
         )}
       </div>
@@ -142,10 +147,17 @@ export default function RoastReport({
           ❌ {labels.biggestProblems}
         </h3>
         <div className="space-y-4">
-          {report.biggestProblems && report.biggestProblems.length === 0 && (
-            <p className="text-[var(--text)] opacity-90">
-              No major problems found here — nice work.
-            </p>
+          {/* An empty list only means "nice work" when the write-up actually ran —
+              otherwise a failed call reads as a clean bill of health. */}
+          {report.proseUnavailable ? (
+            <p className="text-[var(--muted)] italic">{labels.proseUnavailableNotice}</p>
+          ) : (
+            report.biggestProblems &&
+            report.biggestProblems.length === 0 && (
+              <p className="text-[var(--text)] opacity-90">
+                No major problems found here — nice work.
+              </p>
+            )
           )}
           {report.biggestProblems?.map((p, i) => (
             <div key={i} className="dotted-divider pt-4 first:pt-0 first:border-0">
@@ -222,7 +234,7 @@ export default function RoastReport({
           💡 {labels.suggestions}
         </h3>
         <ul className="space-y-3">
-          {report.suggestions && report.suggestions.length === 0 && (
+          {!report.proseUnavailable && report.suggestions && report.suggestions.length === 0 && (
             <li className="text-[var(--text)] opacity-90">
               Nothing further to suggest right now.
             </li>

@@ -9,14 +9,17 @@ import {
 import { CriterionRating, GeminiModel } from "../../app/lib/types";
 import { aiCriteria } from "../../app/lib/criteria";
 import { computeContentChecks } from "../../app/lib/contentChecks";
+import { buildProseInput, generateProse } from "../../app/lib/prose";
 import { requireGeminiKey, describeKeyPresence } from "../env";
 import { ageHours, loadFixture, loadScreenshotBase64, newResultPath, saveResultTo, sha256 } from "../fixtures";
 import { describe, fmt, signed, table } from "../stats";
-import { Cell, CellSummary, ReplayReport, ReplayRun } from "../types";
+import { Cell, CellSummary, ProseRun, ReplayReport, ReplayRun } from "../types";
 
 const MODEL_ALIASES: Record<string, GeminiModel> = {
   flash: "gemini-flash-latest",
   "flash-lite": "gemini-flash-lite-latest",
+  "3.5-flash-lite": "gemini-3.5-flash-lite",
+  "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
   "gemini-flash-latest": "gemini-flash-latest",
   "gemini-flash-lite-latest": "gemini-flash-lite-latest",
 };
@@ -25,7 +28,7 @@ function parseModels(spec: string): GeminiModel[] {
   return spec.split(",").map((raw) => {
     const model = MODEL_ALIASES[raw.trim()];
     if (!model) {
-      console.error(`\n  Unknown model "${raw.trim()}". Use: flash, flash-lite\n`);
+      console.error(`\n  Unknown model "${raw.trim()}". Use: flash, flash-lite, 3.5-flash-lite\n`);
       process.exit(1);
     }
     return model;
@@ -46,8 +49,14 @@ function parseTemps(spec: string): (number | null)[] {
   });
 }
 
+const MODEL_LABELS: Record<GeminiModel, string> = {
+  "gemini-flash-latest": "flash",
+  "gemini-flash-lite-latest": "flash-lite",
+  "gemini-3.5-flash-lite": "3.5-flash-lite",
+};
+
 function cellLabel(cell: Cell): string {
-  const model = cell.model === "gemini-flash-latest" ? "flash" : "flash-lite";
+  const model = MODEL_LABELS[cell.model];
   return `${model} @ ${cell.temperature === null ? "default" : `t=${cell.temperature}`}`;
 }
 
@@ -102,6 +111,7 @@ export async function replay(args: {
   dryRun: boolean;
   mock: boolean;
   printPrompt: boolean;
+  proseTemps: string | null;
 }): Promise<void> {
   const fixture = loadFixture(args.fixture);
   const screenshotBase64 = loadScreenshotBase64(fixture);
@@ -140,13 +150,18 @@ export async function replay(args: {
   const models = parseModels(args.models);
   const temps = parseTemps(args.temps);
   const cells: Cell[] = models.flatMap((model) => temps.map((temperature) => ({ model, temperature })));
+  const proseTemps = args.proseTemps ? parseTemps(args.proseTemps) : [];
 
   console.log(`\n  Fixture   : ${fixture.slug} (${fixture.url})`);
   console.log(`  Captured  : ${ageHours(fixture.capturedAt).toFixed(1)}h ago · ${fixture.capturedWith.dataSource}`);
   console.log(`  Frozen SEO: ${fixture.seoChecks.seoScore}/10 (held constant across every run)`);
   console.log(`  Prompt    : ${promptText.length} chars, ${parts.length} part(s)${screenshotBase64 ? " incl. screenshot" : ""}`);
   console.log(`  API key   : ${describeKeyPresence()}`);
-  console.log(`  Cells     : ${cells.length} × ${args.runs} runs = ${cells.length * args.runs} Gemini calls`);
+  console.log(
+    `  Cells     : ${cells.length} × ${args.runs} runs × ${1 + proseTemps.length} call(s) = ` +
+      `${cells.length * args.runs * (1 + proseTemps.length)} Gemini calls` +
+      (proseTemps.length ? ` (+ up to 1 retry per hollow write-up)` : "")
+  );
   console.log(`  Microlink : 0 requests (replaying a frozen fixture)`);
 
   if (promptDrift) {
@@ -323,6 +338,52 @@ export async function replay(args: {
         },
       };
 
+      // The write-up call, exactly as production makes it — built from THIS run's criteria,
+      // so its variance includes what it inherits from the criteria call.
+      if (proseTemps.length && !args.mock && assessments && scoresInRange && overallScore !== null) {
+        const proseInput = buildProseInput({
+          url: fixture.url,
+          firstImpression: typeof parsed.firstImpression === "string" ? parsed.firstImpression : "",
+          assessments,
+          designScore: design,
+          trustScore: trust,
+          uxScore: ux,
+          seoScore: fixture.seoChecks.seoScore,
+          overallScore,
+          detectedStack: fixture.extractedData.detectedStack,
+        });
+        run.prose = [];
+        for (const temperature of proseTemps) {
+          const p0 = Date.now();
+          const res = await generateProse(proseInput, undefined, {
+            models: [cell.model],
+            temperature: temperature ?? undefined,
+          });
+          const prose = res.sections;
+          const texts = [
+            ...prose.biggestProblems.map((x) => x.issue),
+            ...prose.suggestions.map((x) => x.text),
+          ];
+          run.prose.push({
+            temperature,
+            modelUsed: res.modelUsed,
+            tries: res.tries,
+            unavailable: res.unavailable,
+            failedCriteria: proseInput.failed.length,
+            counts: {
+              biggestProblems: prose.biggestProblems.length,
+              quickWins: prose.quickWins.length,
+              suggestions: prose.suggestions.length,
+            },
+            meanItemChars: texts.length
+              ? Math.round(texts.reduce((n, t) => n + t.length, 0) / texts.length)
+              : null,
+            latencyMs: Date.now() - p0,
+          });
+          if (args.delayMs > 0) await new Promise((r) => setTimeout(r, args.delayMs));
+        }
+      }
+
       report.runs.push(run);
       saveResultTo(resultPath, report); // persist after every run
 
@@ -338,6 +399,15 @@ export async function replay(args: {
           attempts > 1 ? `[${attempts} attempts] ` : ""
         }${status}${run.fellBack ? "  *** FELL BACK ***" : ""}`
       );
+      for (const p of run.prose ?? []) {
+        console.log(
+          `         prose @ ${p.temperature === null ? "default" : `t=${p.temperature}`}`.padEnd(32) +
+            (p.unavailable
+              ? "UNAVAILABLE"
+              : `problems ${p.counts.biggestProblems} · wins ${p.counts.quickWins} · suggestions ${p.counts.suggestions}` +
+                ` · ~${p.meanItemChars ?? 0} chars/item${p.tries > 1 ? "  [retried]" : ""}`)
+        );
+      }
 
       if (error) {
         if (++consecutiveFailures >= 3) {
@@ -471,6 +541,7 @@ export async function replay(args: {
   }
 
   printCriterionStability(report.runs);
+  if (proseTemps.length) printProseStability(report.runs, proseTemps);
 
   const anyFallback = report.runs.some((r) => r.fellBack);
   if (anyFallback) {
@@ -559,4 +630,46 @@ function printCriterionStability(runs: ReplayRun[]): void {
     `\n    ${unstable.length} of ${rows.length} criteria disagreed with themselves. These are the\n` +
       `    ones to rewrite as sharper observations, or move to the code tier.`
   );
+}
+
+/**
+ * Write-up variance per prose temperature. The criteria stability table above says whether
+ * the FACTS move; this says whether the ADVICE people actually read moves — the part that
+ * was never measured, and the part that looked "much weaker" on a second run.
+ */
+function printProseStability(runs: ReplayRun[], proseTemps: (number | null)[]): void {
+  const label = (t: number | null) => (t === null ? "default" : `t=${t}`);
+  const span = (xs: number[]) =>
+    xs.length ? `${fmt(xs.reduce((a, b) => a + b, 0) / xs.length)} (${Math.min(...xs)}–${Math.max(...xs)})` : "—";
+
+  console.log(`\n  WRITE-UP STABILITY  (mean, min–max per run)\n`);
+  console.log(
+    table(
+      ["prose temp", "n", "problems", "suggestions", "quick wins", "chars/item", "retried", "unavailable"],
+      proseTemps.map((t) => {
+        const ps: ProseRun[] = runs.flatMap((r) => (r.prose ?? []).filter((p) => p.temperature === t));
+        const ok = ps.filter((p) => !p.unavailable);
+        return [
+          label(t),
+          String(ps.length),
+          span(ok.map((p) => p.counts.biggestProblems)),
+          span(ok.map((p) => p.counts.suggestions)),
+          span(ok.map((p) => p.counts.quickWins)),
+          span(ok.flatMap((p) => (p.meanItemChars === null ? [] : [p.meanItemChars]))),
+          String(ps.filter((p) => p.tries > 1).length),
+          String(ps.filter((p) => p.unavailable).length),
+        ];
+      })
+    )
+      .split("\n")
+      .map((l) => "    " + l)
+      .join("\n")
+  );
+  const failed = runs.flatMap((r) => (r.prose?.[0] ? [r.prose[0].failedCriteria] : []));
+  if (failed.length) {
+    console.log(
+      `\n    FAILED criteria handed to the write-up: ${span(failed)} — a wide range here means the\n` +
+        `    write-up's variance is inherited from the criteria call, not caused by it.`
+    );
+  }
 }

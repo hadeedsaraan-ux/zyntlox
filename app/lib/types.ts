@@ -29,9 +29,11 @@ export interface ActionItem {
 }
 
 /**
- * Prefer `-latest` aliases over pinned versions. Pinned model ids are retired without
- * warning — `gemini-2.5-flash` now returns 404 — which would take the primary model out
- * silently. `gemini-3.5-flash-lite` is the one pinned entry, kept as a middle fallback.
+ * The primary is PINNED (`gemini-3.5-flash-lite`) and the `-latest` aliases are fallbacks.
+ * An alias can be repointed at a different model with no notice, which changed report
+ * quality between runs with nothing in our logs to show it. Pinned ids do get retired
+ * (`gemini-2.5-flash` now 404s), which is why the aliases stay behind it: a 404 is never
+ * retried, logs loudly, and falls straight through to them.
  */
 export type GeminiModel =
   | "gemini-flash-lite-latest"
@@ -221,6 +223,15 @@ export interface Report {
   /** Per-criterion breakdown behind designScore/trustScore/uxScore. */
   assessments: CategoryAssessment[];
   modelUsed: GeminiModel;
+  /**
+   * Model that wrote biggestProblems/quickWins/suggestions — a separate call that can fall
+   * back independently of `modelUsed`. Optional: absent on reports built before it existed.
+   */
+  proseModelUsed?: GeminiModel | null;
+  /** The written sections failed twice and are empty for that reason, not by judgment. */
+  proseUnavailable?: boolean;
+  /** No screenshot reached the model, so screenshot-answered criteria are mostly "unclear". */
+  noScreenshot?: boolean;
   biggestProblems: Problem[];
   quickWins: ActionItem[];
   suggestions: ActionItem[];

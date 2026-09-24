@@ -27,12 +27,17 @@ const HELP = `
         regional variant (currency, language, consent banner).
 
     replay --fixture <slug> [--runs 5] [--models flash,flash-lite]
-           [--temps default,0] [--delay-ms 4000] [--dry-run] [--mock] [--print-prompt]
+           [--temps default,0] [--prose-temps default,0.2] [--delay-ms 4000]
+           [--dry-run] [--mock] [--print-prompt]
         THE CORE EXPERIMENT. Replays one frozen input through Gemini N times per
         (model × temperature) cell and reports how much each source moves the score.
         COSTS 0 Microlink requests. Needs GEMINI_API_KEY unless --dry-run/--mock.
         "--temps default" means generationConfig is omitted entirely — that cell is
         exactly what production sends today.
+        --prose-temps also runs the write-up call (problems / quick wins /
+        suggestions) after every run, once per listed temperature, and reports how
+        much the advice varies. Adds (runs × prose temps) extra calls per cell.
+        Models: flash, flash-lite, 3.5-flash-lite.
 
     path-compare --fixture <slug> [--fresh]
         Run the regex fallback against the same URL and diff it against the
@@ -60,6 +65,7 @@ async function main() {
       runs: { type: "string" },
       models: { type: "string" },
       temps: { type: "string" },
+      "prose-temps": { type: "string" },
       "delay-ms": { type: "string" },
       force: { type: "boolean", default: false },
       fresh: { type: "boolean", default: false },
@@ -122,6 +128,7 @@ async function main() {
         runs: num(values.runs, 5),
         models: values.models ?? "flash,flash-lite",
         temps: values.temps ?? "default",
+        proseTemps: values["prose-temps"] ?? null,
         delayMs: num(values["delay-ms"], 4000),
         dryRun: values["dry-run"],
         mock: values.mock,

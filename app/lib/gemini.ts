@@ -4,6 +4,12 @@ import { GeminiModel, GeminiPart, ProgressStage } from "./types";
  * Models to try, in order. If one is overloaded (503) or rate-limited (429), we retry it
  * a few times with backoff before falling back to the next.
  *
+ * The primary is a pinned version, not an alias. `gemini-flash-lite-latest` used to lead,
+ * but an alias can be repointed at a different model at any time, so two identical
+ * requests could be answered by different models with nothing in our logs to tell them
+ * apart. The aliases stay as fallbacks: if the pinned id is ever retired it 404s, which
+ * isRetryableError logs loudly and falls straight through on.
+ *
  * Order is measured, not assumed. `gemini-flash-latest` used to lead this list and is
  * reliably 503 "experiencing high demand" against our payload, which is why every report
  * carried a "backup model used" notice — the fallback was the normal path, not the
@@ -16,8 +22,8 @@ import { GeminiModel, GeminiPart, ProgressStage } from "./types";
  *   gemini-2.5-flash           404   retired
  */
 const MODELS: readonly GeminiModel[] = [
-  "gemini-flash-lite-latest",
   "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
   "gemini-flash-latest",
 ];
 
@@ -207,6 +213,18 @@ export async function callGeminiWithRetry(
  * version tested `modelUsed !== "gemini-flash-latest"`, so reordering the chain would
  * have inverted the notice and shown it on every healthy request.
  */
-export function usedBackupModel(modelUsed: GeminiModel | undefined): boolean {
-  return modelUsed !== undefined && modelUsed !== PRIMARY_MODEL;
+export function usedBackupModel(modelUsed: GeminiModel | null | undefined): boolean {
+  return modelUsed != null && modelUsed !== PRIMARY_MODEL;
+}
+
+/**
+ * A report is made by two calls (criteria, then the written sections), and each can fall
+ * back on its own. Checking only the first hid exactly the case where the advice — the
+ * part people read — came from a different model.
+ */
+export function reportUsedBackupModel(report: {
+  modelUsed: GeminiModel;
+  proseModelUsed?: GeminiModel | null;
+}): boolean {
+  return usedBackupModel(report.modelUsed) || usedBackupModel(report.proseModelUsed);
 }

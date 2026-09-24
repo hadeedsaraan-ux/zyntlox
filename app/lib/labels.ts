@@ -10,6 +10,8 @@ export const LABELS: Record<
     technicalSeoChecks: string;
     seoUnverifiedNotice: string;
     backupModelNotice: string;
+    proseUnavailableNotice: string;
+    noScreenshotNotice: string;
   }
 > = {
   technical: {
@@ -23,6 +25,10 @@ export const LABELS: Record<
     // Deliberately does NOT claim the scores are less reliable. The measured 6-point
     // spread was taken on the fallback model, so that claim was never supported.
     backupModelNotice: "Our first-choice AI model was busy, so a backup model produced this analysis.",
+    proseUnavailableNotice:
+      "The written analysis couldn't be generated this time — run the audit again for problems and suggestions. The checklist results below are complete.",
+    noScreenshotNotice:
+      "We couldn't render this page, so the AI reviewed it without a screenshot — most visual design checks are marked unclear.",
   },
   plain: {
     firstImpression: "What Visitors See",
@@ -33,6 +39,10 @@ export const LABELS: Record<
     seoUnverifiedNotice:
       "We couldn't fully load this page to double check these numbers, so a few of them below might be a little off.",
     backupModelNotice: "Our usual AI was busy, so we used our backup one for this report.",
+    proseUnavailableNotice:
+      "We couldn't write up the advice this time — try running it again. The checklist below is still complete.",
+    noScreenshotNotice:
+      "We couldn't load a picture of this page, so we couldn't judge how it looks this time.",
   },
 };
 

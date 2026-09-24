@@ -1,3 +1,4 @@
+import { PRIMARY_MODEL } from "./gemini";
 import { computeContentChecks } from "./contentChecks";
 import { computeOverallScore, parseAssessments, scoreOf } from "./scoring";
 import { computeSeoAudit } from "./seoAudit";
@@ -206,7 +207,8 @@ export const sampleReport: Report = {
   trustScore: SAMPLE_TRUST,
   uxScore: SAMPLE_UX,
   seoScore: sampleSeoChecks.seoScore,
-  modelUsed: "gemini-flash-latest",
+  // The primary, so the sample never shows a "backup model was busy" notice.
+  modelUsed: PRIMARY_MODEL,
   assessments: sampleAssessments,
   seoChecks: sampleSeoChecks,
   biggestProblems: [

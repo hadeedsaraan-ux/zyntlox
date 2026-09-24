@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callGeminiWithRetry, usedBackupModel } from "../../lib/gemini";
+import { callGeminiWithRetry, reportUsedBackupModel } from "../../lib/gemini";
 import { fetchSiteData, ExtractedSiteData } from "../../lib/siteData";
 import { createProgressStream } from "../../lib/progress";
 import { computeSeoAudit } from "../../lib/seoAudit";
 import { computeContentChecks } from "../../lib/contentChecks";
 import { computeOverallScore, parseAssessments, scoreOf } from "../../lib/scoring";
-import { criterionDef, criterionLabel, criterionWeight } from "../../lib/criteria";
-import { buildRoastParts, buildProseParts } from "../../lib/prompts";
+import { buildRoastParts } from "../../lib/prompts";
+import { buildProseInput, generateProse, PROSE_TEMPERATURE } from "../../lib/prose";
 import { hostOf, logEvent } from "../../lib/log";
-import { Report, RawScrapeData, Problem, ActionItem } from "../../lib/types";
-
-// The prose call's JSON mode guarantees syntactically valid JSON, not schema conformance —
-// an occasional item comes back with a null/missing text field. Drop those rather than
-// shipping a blank card to the report.
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
-}
-function isValidProblem(p: unknown): p is Problem {
-  return !!p && typeof p === "object" && isNonEmptyString((p as Problem).issue);
-}
-function isValidActionItem(a: unknown): a is ActionItem {
-  return !!a && typeof a === "object" && isNonEmptyString((a as ActionItem).text);
-}
+import { Report, RawScrapeData } from "../../lib/types";
 
 export async function POST(request: NextRequest) {
   const { url } = await request.json();
@@ -149,50 +136,25 @@ export async function POST(request: NextRequest) {
       // section instead of three to five. This call sees the failed criteria, so the
       // advice is grounded in real findings rather than improvised.
       sendStage({ id: "gemini", label: "Writing up what to fix…" });
-      const rated = assessments.flatMap((a) => a.criteria);
-      const byWeight = (a: { id: string }, b: { id: string }) => {
-        const da = criterionDef(a.id);
-        const db = criterionDef(b.id);
-        return (db ? criterionWeight(db) : 1) - (da ? criterionWeight(da) : 1);
-      };
-      const labelOf = (c: { id: string; evidence: string }) =>
-        c.evidence ? `${criterionLabel(c.id, "technical")} — ${c.evidence}` : criterionLabel(c.id, "technical");
-
-      let prose: Record<string, unknown> = {};
-      try {
-        const res = await callGeminiWithRetry(
-          buildProseParts({
-            url,
-            firstImpression: aiReport.firstImpression ?? "",
-            designScore,
-            trustScore,
-            uxScore,
-            seoScore: seoChecks.seoScore,
-            overallScore,
-            detectedStack: extractedData.detectedStack,
-            failed: rated.filter((c) => c.rating === "no").sort(byWeight).map(labelOf),
-            met: rated.filter((c) => c.rating === "yes").sort(byWeight).map((c) => criterionLabel(c.id, "technical")),
-          }),
-          sendStage,
-          { jsonMode: true }
-        );
-        const raw = res.data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-        prose = JSON.parse(raw.replace(/```json/g, "").replace(/```/g, "").trim());
-      } catch (err) {
-        // The scores and the full criteria breakdown are already complete and correct.
-        // Losing the write-up should cost those sections, never the whole report.
-        console.error("Prose call failed; returning the report without written sections:", err);
-      }
+      const proseInput = buildProseInput({
+        url,
+        firstImpression: aiReport.firstImpression ?? "",
+        assessments,
+        designScore,
+        trustScore,
+        uxScore,
+        seoScore: seoChecks.seoScore,
+        overallScore,
+        detectedStack: extractedData.detectedStack,
+      });
+      // The scores and the full criteria breakdown are already complete and correct, so a
+      // failed write-up costs those sections, never the whole report — but it is now
+      // flagged on the report instead of silently shipping empty sections.
+      const prose = await generateProse(proseInput, sendStage);
 
       const report: Report = {
         ...aiReport,
-        biggestProblems: Array.isArray(prose.biggestProblems)
-          ? prose.biggestProblems.filter(isValidProblem)
-          : [],
-        quickWins: Array.isArray(prose.quickWins) ? prose.quickWins.filter(isValidActionItem) : [],
-        suggestions: Array.isArray(prose.suggestions)
-          ? prose.suggestions.filter(isValidActionItem)
-          : [],
+        ...prose.sections,
         designScore,
         trustScore,
         uxScore,
@@ -201,6 +163,9 @@ export async function POST(request: NextRequest) {
         assessments,
         overallScore,
         modelUsed,
+        proseModelUsed: prose.modelUsed,
+        proseUnavailable: prose.unavailable,
+        noScreenshot: !screenshotBase64,
       };
 
       logEvent("roast.completed", {
@@ -209,9 +174,13 @@ export async function POST(request: NextRequest) {
         isVerified: extractedData.isVerified,
         hasScreenshot: Boolean(screenshotBase64),
         modelUsed,
-        modelFellBack: usedBackupModel(modelUsed),
+        proseModelUsed: prose.modelUsed,
+        modelFellBack: reportUsedBackupModel(report),
         geminiAttempts,
-        temperature: null, // production sends no generationConfig
+        temperature: null, // the criteria call sends no temperature
+        proseTemperature: PROSE_TEMPERATURE,
+        proseTries: prose.tries,
+        proseUnavailable: prose.unavailable,
         designScore,
         trustScore,
         uxScore,
@@ -237,10 +206,11 @@ export async function POST(request: NextRequest) {
         totalMs: Date.now() - requestStartedAt,
         promptChars: parts[0] && "text" in parts[0] ? parts[0].text.length : 0,
         proseCounts: {
-          problems: Array.isArray(prose.biggestProblems) ? prose.biggestProblems.length : 0,
-          wins: Array.isArray(prose.quickWins) ? prose.quickWins.length : 0,
-          suggestions: Array.isArray(prose.suggestions) ? prose.suggestions.length : 0,
+          problems: prose.sections.biggestProblems.length,
+          wins: prose.sections.quickWins.length,
+          suggestions: prose.sections.suggestions.length,
         },
+        failedCriteria: proseInput.failed.length,
         parseOk: true,
       });
 

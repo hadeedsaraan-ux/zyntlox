@@ -40,6 +40,21 @@ export interface Cell {
   temperature: number | null;
 }
 
+/** One write-up call made after a replay run, via the production generateProse path. */
+export interface ProseRun {
+  /** null = server default. */
+  temperature: number | null;
+  modelUsed: GeminiModel | null;
+  /** 2 means the first attempt failed or came back hollow and was retried. */
+  tries: number;
+  unavailable: boolean;
+  failedCriteria: number;
+  counts: { biggestProblems: number; quickWins: number; suggestions: number };
+  /** Mean characters per problem/suggestion — a rough proxy for how specific the advice is. */
+  meanItemChars: number | null;
+  latencyMs: number;
+}
+
 export interface ReplayRun {
   runIndex: number;
   cell: Cell;
@@ -72,6 +87,8 @@ export interface ReplayRun {
     suggestions: number;
     snippetsPresent: number;
   };
+  /** Present only with --prose-temps. */
+  prose?: ProseRun[];
 }
 
 export interface DimensionStats {
