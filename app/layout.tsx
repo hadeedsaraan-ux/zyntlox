@@ -18,7 +18,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ZYNTLOX — Brutally Honest Website Roasts",
+  title: "MAGPIE — Brutally Honest Website Roasts",
   description: "Get brutally honest, actionable feedback for your website in under 60 seconds.",
   icons: {
     icon: [

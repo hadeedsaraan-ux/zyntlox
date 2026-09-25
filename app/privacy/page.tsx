@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — ZYNTLOX",
+  title: "Privacy Policy — MAGPIE",
 };
 
 export default function PrivacyPage() {
@@ -13,14 +13,14 @@ export default function PrivacyPage() {
           href="/"
           className="inline-flex items-center gap-2 mb-8 font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase hover:text-[var(--amber)] transition"
         >
-          ← Back to ZYNTLOX
+          ← Back to MAGPIE
         </Link>
         <h1 className="font-display text-4xl font-bold mb-2">Privacy Policy</h1>
         <p className="text-[var(--muted)] mb-10">Last updated: August 22, 2026</p>
 
         <div className="space-y-8">
           <section>
-            <h2 className="font-display font-bold text-lg mb-2">What ZYNTLOX does</h2>
+            <h2 className="font-display font-bold text-lg mb-2">What MAGPIE does</h2>
             <p className="text-[var(--text)] opacity-90 leading-relaxed">
               You submit a website URL. We fetch that page's publicly available HTML,
               pull a screenshot of it, and send both to an AI model for analysis. We
@@ -71,7 +71,7 @@ export default function PrivacyPage() {
             <h2 className="font-display font-bold text-lg mb-2">Only submit URLs you're allowed to scan</h2>
             <p className="text-[var(--text)] opacity-90 leading-relaxed">
               Since submitting a URL causes our server to fetch and screenshot that page,
-              only use ZYNTLOX on websites you own or otherwise have permission to analyze.
+              only use MAGPIE on websites you own or otherwise have permission to analyze.
             </p>
           </section>
 

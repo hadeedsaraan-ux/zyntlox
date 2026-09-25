@@ -1,7 +1,7 @@
 const faqs = [
   {
-    q: "What is Zyntlox?",
-    a: "Zyntlox gives your website a brutally honest review in under 60 seconds. Paste a URL and you get specific, actionable feedback on design, trust, UX and SEO — what's hurting you, quick wins, and what to fix next.",
+    q: "What is Magpie?",
+    a: "Magpie gives your website a brutally honest review in under 60 seconds. Paste a URL and you get specific, actionable feedback on design, trust, UX and SEO — what's hurting you, quick wins, and what to fix next.",
   },
   {
     q: "How does it work?",

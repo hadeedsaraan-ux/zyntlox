@@ -108,7 +108,7 @@ export default function Home() {
           </span>
         </div>
         <h1 className="font-display text-5xl md:text-6xl font-bold mb-3 tracking-tight">
-          ZYNTLOX
+          MAGPIE
         </h1>
         <p className="text-[var(--muted)] max-w-md mx-auto leading-relaxed">
           Get brutally honest, actionable feedback for your website in under 60 seconds.

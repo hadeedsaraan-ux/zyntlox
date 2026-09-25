@@ -1,7 +1,7 @@
 const testimonials = [
   {
     quote:
-      "At Dionix AI, we've had early access to Zyntlox and have been using it for our SEO clients. The reports are simple, fast, and make it easy to spot key SEO issues and quick wins.",
+      "At Dionix AI, we've had early access to [Magpie] and have been using it for our SEO clients. The reports are simple, fast, and make it easy to spot key SEO issues and quick wins.",
     name: "Ali",
     title: "Dionix AI",
   },

@@ -34,7 +34,11 @@ export interface ExtractedSiteData extends SeoFacts {
   commerceSignals: CommerceSignals | null;
 }
 
-/** Our own scraper service: headless Chromium, auto-scroll, cookie banners removed. */
+/**
+ * Our own scraper service: headless Chromium, auto-scroll, cookie banners removed.
+ * Still on the pre-rebrand zyntlox-scraper domain until that Vercel project is renamed —
+ * then update this default, or just set SCRAPER_ENDPOINT in the Vercel env.
+ */
 const SCRAPER_ENDPOINT =
   process.env.SCRAPER_ENDPOINT ?? "https://zyntlox-scraper.vercel.app/api/scrape";
 
