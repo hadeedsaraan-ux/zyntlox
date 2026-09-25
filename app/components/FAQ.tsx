@@ -54,29 +54,37 @@ const faqJsonLd = {
 
 export default function FAQ() {
   return (
-    <section className="w-full max-w-2xl mt-12">
+    <section id="faq" className="w-full max-w-5xl pt-24" aria-labelledby="faq-heading">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c") }}
       />
-      <div className="text-center mb-6">
-        <span className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase">
-          Questions
-        </span>
-        <h2 className="font-display text-2xl font-bold mt-2">FAQ</h2>
-      </div>
-      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-4">
-        {faqs.map(({ q, a }) => (
-          <details key={q} className="group border-b border-[var(--border)] last:border-0">
-            <summary className="flex items-center justify-between gap-3 cursor-pointer list-none py-4 font-display font-bold hover:text-[var(--amber)] transition-colors">
-              {q}
-              <span className="shrink-0 font-mono text-[var(--muted)] group-open:rotate-45 transition-transform">
-                +
-              </span>
-            </summary>
-            <p className="text-[var(--muted)] text-sm leading-relaxed pb-4 -mt-1">{a}</p>
-          </details>
-        ))}
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] md:gap-12">
+        <div className="md:sticky md:top-24 md:self-start">
+          <p className="eyebrow mb-3">FAQ</p>
+          <h2 id="faq-heading" className="font-display text-4xl sm:text-5xl">
+            Questions, answered
+          </h2>
+          <p className="mt-4 max-w-xs leading-relaxed text-muted">
+            The short version: paste a link, get honest feedback, nothing is kept.
+          </p>
+        </div>
+        <div className="card divide-y divide-line px-5 sm:px-6">
+          {faqs.map(({ q, a }) => (
+            <details key={q} className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 font-medium text-ink transition-colors hover:text-accent [&::-webkit-details-marker]:hidden">
+                {q}
+                <span
+                  aria-hidden="true"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line-strong font-mono text-sm text-muted transition-transform group-open:rotate-45"
+                >
+                  +
+                </span>
+              </summary>
+              <p className="-mt-1 pb-5 pr-10 text-[15px] leading-relaxed text-muted">{a}</p>
+            </details>
+          ))}
+        </div>
       </div>
     </section>
   );

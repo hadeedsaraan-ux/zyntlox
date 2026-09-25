@@ -229,7 +229,9 @@ ${sideBlock("SITE B (\"the competitor\")", competitor)}
 
 THE SCORES ABOVE ARE FINAL. Both sites were assessed against the same fixed checklist and scored by code. Do not re-score them, do not dispute them, and do not output any numbers of your own — not even a total. Your entire job is to explain, in plain language, WHY the gap exists and what to do about it, using the met/failed criteria above as your evidence.
 
-Where the two sites differ on a category, the explanation must point at specific criteria from the lists above. "Site B wins on Trust because it shows named customer reviews and a physical address, both of which Site A is missing" is the right shape. Vague statements like "Site B feels more professional" are not.
+The reader is the owner of Site A, and the report labels the two sites "Your site" and "Competitor". So in everything you write, refer to Site A as "your site" and Site B as "the competitor" — never write "Site A" or "Site B".
+
+Where the two sites differ on a category, the explanation must point at specific criteria from the lists above. "The competitor wins on Trust because it shows named customer reviews and a physical address, both of which your site is missing" is the right shape. Vague statements like "The competitor feels more professional" are not.
 
 Where a category is close, say so plainly rather than manufacturing a difference.
 

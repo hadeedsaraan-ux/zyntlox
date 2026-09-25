@@ -17,22 +17,19 @@ export default function CodeSnippet({ snippet }: { snippet: CodeSnippetType }) {
   };
 
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-card-hover)] border-b border-[var(--border)]">
-        <span className="font-mono text-[10px] tracking-widest uppercase text-[var(--muted)]">
-          {snippet.language}
-        </span>
+    <div className="overflow-hidden rounded-xl border border-line bg-surface-2">
+      <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
+        <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted">{snippet.language}</span>
         <button
+          type="button"
           onClick={handleCopy}
-          className="font-mono text-[10px] tracking-widest uppercase text-[var(--muted)] hover:text-[var(--amber)] transition"
+          className="font-mono text-[10.5px] uppercase tracking-widest text-muted transition hover:text-accent"
         >
-          {copied ? "Copied!" : "Copy"}
+          {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="px-3 py-2 overflow-x-auto">
-        <code className="font-mono text-[12px] leading-relaxed text-[var(--text)] whitespace-pre">
-          {snippet.code}
-        </code>
+      <pre className="overflow-x-auto px-3 py-2.5">
+        <code className="whitespace-pre font-mono text-[12.5px] leading-relaxed text-ink">{snippet.code}</code>
       </pre>
     </div>
   );

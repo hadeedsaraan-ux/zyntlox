@@ -9,6 +9,7 @@ import HowItWorks from "./components/HowItWorks";
 import SampleReportPreview from "./components/SampleReportPreview";
 import Testimonials from "./components/Testimonials";
 import FAQ from "./components/FAQ";
+import WhatWeCheck from "./components/WhatWeCheck";
 import ProgressIndicator from "./components/ProgressIndicator";
 import { Report, ProgressStage, StreamEvent, RawScrapeData } from "./lib/types";
 import { ExtractedSiteData } from "./lib/siteData";
@@ -24,8 +25,8 @@ export default function Home() {
   const { report, setReport, mode, setMode, reportUrl, setReportUrl } = useReport();
 
   const handleRoast = async () => {
-    if (!url) {
-      alert("Please enter a website URL first!");
+    if (!url.trim()) {
+      setError("Enter a website address for Magpie to inspect.");
       return;
     }
 
@@ -92,83 +93,84 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-screen px-4 py-16 flex flex-col items-center">
-      <Link
-        href="/compare"
-        className="absolute top-4 right-4 sm:top-6 sm:right-6 px-4 py-2 border border-[var(--border)] rounded-full font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase hover:text-[var(--amber)] hover:border-[var(--amber)] transition"
-      >
-        Comparison Mode
-      </Link>
-
+    <main className="relative flex flex-col items-center px-4 sm:px-6">
       {/* Hero */}
-      <div className="w-full max-w-xl text-center mb-10">
-        <div className="inline-block px-3 py-1 mb-4 border border-[var(--border)] rounded-full">
-          <span className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase">
-            Website Diagnostic Tool
-          </span>
-        </div>
-        <h1 className="font-display text-5xl md:text-6xl font-bold mb-3 tracking-tight">
-          MAGPIE
+      <section className="relative w-full max-w-3xl pt-16 pb-10 text-center sm:pt-24">
+        <p className="eyebrow mb-5">Website review · under 60 seconds</p>
+        <h1 className="font-display text-[2.9rem] leading-[1.02] sm:text-7xl">
+          Every flaw on your site,{" "}
+          <em className="sheen-text pr-1">spotted.</em>
         </h1>
-        <p className="text-[var(--muted)] max-w-md mx-auto leading-relaxed">
-          Get brutally honest, actionable feedback for your website in under 60 seconds.
+        <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted">
+          Magpie reads your page the way a first-time visitor does, then tells you — bluntly —
+          what&apos;s costing you trust, leads and sales, and how to fix it.
         </p>
-      </div>
 
-      {/* Input Card */}
-      <div className="w-full max-w-xl bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 scorched-top">
-        <label className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase mb-2 block">
-          Target URL
-        </label>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            placeholder="https://example.com"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--ember)] transition font-mono text-sm"
-          />
-          <button
-            onClick={handleRoast}
-            disabled={loading}
-            className="px-6 py-3 rounded-lg font-display font-bold transition disabled:opacity-50 whitespace-nowrap"
-            style={{
-              background: "linear-gradient(135deg, var(--ember), var(--amber))",
-              color: "#1a1614",
-            }}
+        <form
+          className="relative mx-auto mt-10 max-w-xl"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleRoast();
+          }}
+        >
+          <div aria-hidden="true" className="hero-glow pointer-events-none absolute -inset-10 -z-10" />
+          <div className="card flex flex-col gap-2 p-2 sm:flex-row sm:items-center">
+            <label htmlFor="url" className="sr-only">
+              Website URL
+            </label>
+            <input
+              id="url"
+              type="text"
+              inputMode="url"
+              autoComplete="url"
+              placeholder="yourwebsite.com"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="w-full flex-1 bg-transparent px-4 py-3 font-mono text-[15px] text-ink outline-none placeholder:text-muted/80"
+            />
+            <button type="submit" disabled={loading} className="btn-primary px-6 py-3 text-[15px]">
+              {loading ? "Inspecting…" : "Inspect my site"}
+            </button>
+          </div>
+          <p className="mt-4 font-mono text-[11px] tracking-wide text-muted">
+            No sign-up · Nothing stored · Free while in beta
+          </p>
+        </form>
+
+        {loading && <ProgressIndicator stage={activeStage} />}
+
+        {error && (
+          <div
+            role="alert"
+            className="mx-auto mt-6 max-w-xl rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-left text-sm text-danger"
           >
-            {loading ? "Scanning..." : "🔥 Roast It"}
-          </button>
-        </div>
-      </div>
-
-      {loading && <ProgressIndicator stage={activeStage} />}
-
-      {error && (
-        <div className="mt-6 w-full max-w-xl bg-[#2a1616] border border-[var(--danger)] text-[#ffb4b4] px-4 py-3 rounded-lg font-mono text-sm">
-          {error}
-        </div>
-      )}
+            {error}
+          </div>
+        )}
+      </section>
 
       {report ? (
-        <div className="mt-8 w-full max-w-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <h2 className="font-display text-2xl font-bold">Your Report</h2>
-            <div className="flex items-center gap-2">
+        <section className="w-full max-w-3xl">
+          {/* Sticky on wider screens only — on a phone the wrapped controls would take
+              a quarter of the viewport for the whole read. */}
+          <div className="z-20 -mx-4 mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper px-4 py-3 sm:sticky sm:top-16 sm:-mx-3 sm:px-3 sm:shadow-[0_10px_18px_-14px_rgba(0,0,0,0.35)]">
+            <div className="min-w-0">
+              <p className="eyebrow">The verdict</p>
+              <p className="truncate font-mono text-sm text-ink-soft">{reportUrl}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <ModeToggle mode={mode} onChange={setMode} />
               <ExportPdfButton report={report} mode={mode} url={reportUrl} />
-              <Link
-                href="/raw"
-                className="px-4 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] font-mono text-xs tracking-wide uppercase text-[var(--muted)] transition hover:text-[var(--text)] hover:border-[var(--amber)]"
-              >
-                View Raw Data
+              <Link href="/raw" className="btn-ghost px-3 py-1.5 text-xs">
+                Raw data
               </Link>
             </div>
           </div>
           <RoastReport report={report} mode={mode} editable onChange={setReport} />
-        </div>
+        </section>
       ) : (
         <>
+          <WhatWeCheck />
           <HowItWorks />
           <SampleReportPreview />
           <Testimonials />
