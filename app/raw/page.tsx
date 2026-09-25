@@ -50,7 +50,7 @@ export default function RawDataPage() {
             color: "#1a1614",
           }}
         >
-          Back to Zyntlox
+          Back to Magpie
         </Link>
       </main>
     );
@@ -71,7 +71,7 @@ export default function RawDataPage() {
     if (!screenshotBase64) return;
     downloadBlob(
       base64ToBlob(screenshotBase64, "image/png"),
-      `zyntlox-screenshot-${hostname}-${date}.png`
+      `magpie-screenshot-${hostname}-${date}.png`
     );
   };
 
@@ -79,7 +79,7 @@ export default function RawDataPage() {
     if (!markdown) return;
     downloadBlob(
       new Blob([markdown], { type: "text/markdown" }),
-      `zyntlox-markdown-${hostname}-${date}.md`
+      `magpie-markdown-${hostname}-${date}.md`
     );
   };
 

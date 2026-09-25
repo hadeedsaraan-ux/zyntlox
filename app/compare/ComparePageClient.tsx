@@ -89,7 +89,7 @@ export default function ComparePageClient() {
           href="/"
           className="inline-flex items-center gap-2 font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase hover:text-[var(--amber)] transition"
         >
-          ← Back to ZYNTLOX
+          ← Back to MAGPIE
         </Link>
       </div>
 

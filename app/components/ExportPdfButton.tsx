@@ -58,7 +58,7 @@ export default function ExportPdfButton({
       const date = new Date().toISOString().slice(0, 10);
       const filenamePrefix = agencyName
         ? agencyName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "report"
-        : "zyntlox-report";
+        : "magpie-report";
 
       const link = document.createElement("a");
       link.href = objectUrl;
@@ -97,7 +97,7 @@ export default function ExportPdfButton({
             type="text"
             value={agencyName}
             onChange={(e) => setAgencyName(e.target.value)}
-            placeholder="Defaults to Zyntlox"
+            placeholder="Defaults to Magpie"
             className="w-full mb-3 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--amber)] transition font-mono text-xs"
           />
 

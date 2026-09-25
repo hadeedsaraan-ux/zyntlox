@@ -271,14 +271,14 @@ export default function ReportDocument({
   agencyLogoDataUri?: string;
 }) {
   const labels = LABELS[mode];
-  const brandName = agencyName || "ZYNTLOX";
+  const brandName = agencyName || "MAGPIE";
   const generatedAt = new Date().toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   });
 
   return (
-    <Document title={`Zyntlox Report - ${cleanPdfText(url)}`}>
+    <Document title={`Magpie Report - ${cleanPdfText(url)}`}>
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header}>
           {agencyLogoDataUri && <Image src={agencyLogoDataUri} style={styles.logo} />}

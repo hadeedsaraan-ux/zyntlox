@@ -8,7 +8,7 @@ import { describeKeyPresence } from "./env";
 import { spentToday } from "./fixtures";
 
 const HELP = `
-  zyntlox diagnostics — decompose score variance into its actual sources
+  magpie diagnostics — decompose score variance into its actual sources
 
   Usage:  npm run diag -- <command> [options]
 
