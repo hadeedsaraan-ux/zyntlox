@@ -154,6 +154,8 @@ export async function POST(request: NextRequest) {
 
       const report: Report = {
         ...aiReport,
+        // Same gap as the prose items: fall back to the technical wording, not a blank.
+        plainFirstImpression: aiReport.plainFirstImpression || aiReport.firstImpression,
         ...prose.sections,
         designScore,
         trustScore,

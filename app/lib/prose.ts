@@ -36,15 +36,29 @@ function isValidActionItem(a: unknown): a is ActionItem {
   return !!a && typeof a === "object" && isNonEmptyString((a as ActionItem).text);
 }
 
+// The model sometimes fills the technical text but leaves the plain-English twin empty,
+// which showed as a blank item in Plain English mode. The technical wording is a better
+// fallback than nothing.
+function withPlainProblem(p: Problem): Problem {
+  return isNonEmptyString(p.plainIssue) ? p : { ...p, plainIssue: p.issue };
+}
+function withPlainAction(a: ActionItem): ActionItem {
+  return isNonEmptyString(a.plainText) ? a : { ...a, plainText: a.text };
+}
+
 /** Throws on unparseable JSON; invalid items are dropped rather than failing the whole call. */
 export function parseProse(rawText: string): ProseSections {
   const prose = JSON.parse(rawText.replace(/```json/g, "").replace(/```/g, "").trim() || "{}");
   return {
     biggestProblems: Array.isArray(prose.biggestProblems)
-      ? prose.biggestProblems.filter(isValidProblem)
+      ? prose.biggestProblems.filter(isValidProblem).map(withPlainProblem)
       : [],
-    quickWins: Array.isArray(prose.quickWins) ? prose.quickWins.filter(isValidActionItem) : [],
-    suggestions: Array.isArray(prose.suggestions) ? prose.suggestions.filter(isValidActionItem) : [],
+    quickWins: Array.isArray(prose.quickWins)
+      ? prose.quickWins.filter(isValidActionItem).map(withPlainAction)
+      : [],
+    suggestions: Array.isArray(prose.suggestions)
+      ? prose.suggestions.filter(isValidActionItem).map(withPlainAction)
+      : [],
   };
 }
 

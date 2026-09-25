@@ -10,6 +10,7 @@ import {
   groupSeoChecks,
 } from "../lib/labels";
 import { reportUsedBackupModel } from "../lib/gemini";
+import AutoTextarea from "./AutoTextarea";
 import CodeSnippet from "./CodeSnippet";
 import { AlertIcon, CheckIcon, CompassIcon, EyeIcon, SearchIcon } from "./Icons";
 
@@ -87,10 +88,9 @@ export default function RoastReport({
       {/* First Impression */}
       <Section icon={<EyeIcon />} title={labels.firstImpression} tone="accent">
         {editable ? (
-          <textarea
+          <AutoTextarea
             className={`${editableTextClass} font-display text-[1.35rem] leading-snug text-ink`}
             value={(mode === "plain" ? report.plainFirstImpression : report.firstImpression) ?? ""}
-            rows={3}
             onChange={(e) => {
               const field = mode === "plain" ? "plainFirstImpression" : "firstImpression";
               onChange?.({ ...report, [field]: e.target.value });
@@ -175,10 +175,9 @@ export default function RoastReport({
               <span className="ring-marker mt-[7px] text-danger" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 {editable ? (
-                  <textarea
+                  <AutoTextarea
                     className={`${editableTextClass} mb-1 text-ink`}
                     value={(mode === "plain" ? p.plainIssue : p.issue) ?? ""}
-                    rows={2}
                     onChange={(e) => {
                       const field = mode === "plain" ? "plainIssue" : "issue";
                       onChange?.({
@@ -210,10 +209,9 @@ export default function RoastReport({
               <div className="flex gap-3">
                 <span className="ring-marker mt-[7px] text-success" aria-hidden="true" />
                 {editable ? (
-                  <textarea
+                  <AutoTextarea
                     className={`${editableTextClass} flex-1`}
                     value={(mode === "plain" ? q.plainText : q.text) ?? ""}
-                    rows={2}
                     onChange={(e) => {
                       const field = mode === "plain" ? "plainText" : "text";
                       onChange?.({
@@ -249,10 +247,9 @@ export default function RoastReport({
               <div className="flex gap-3">
                 <span className="ring-marker mt-[7px] text-accent" aria-hidden="true" />
                 {editable ? (
-                  <textarea
+                  <AutoTextarea
                     className={`${editableTextClass} flex-1`}
                     value={(mode === "plain" ? s.plainText : s.text) ?? ""}
-                    rows={2}
                     onChange={(e) => {
                       const field = mode === "plain" ? "plainText" : "text";
                       onChange?.({

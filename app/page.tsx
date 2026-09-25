@@ -151,7 +151,9 @@ export default function Home() {
 
       {report ? (
         <section className="w-full max-w-3xl">
-          <div className="sticky top-16 z-20 -mx-4 mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper/85 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-b-xl sm:px-1">
+          {/* Sticky on wider screens only — on a phone the wrapped controls would take
+              a quarter of the viewport for the whole read. */}
+          <div className="z-20 -mx-4 mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper px-4 py-3 sm:sticky sm:top-16 sm:-mx-3 sm:px-3 sm:shadow-[0_10px_18px_-14px_rgba(0,0,0,0.35)]">
             <div className="min-w-0">
               <p className="eyebrow">The verdict</p>
               <p className="truncate font-mono text-sm text-ink-soft">{reportUrl}</p>
