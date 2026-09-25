@@ -3,21 +3,16 @@
 import { useEffect, useState } from "react";
 import { ProgressStage } from "../lib/types";
 
-const ICONS: Record<string, string> = {
-  fetch_html: "🌐",
-  scraper: "📸",
-};
-
 // GEMINI_LINES[0] is the intro line — shown once per gemini stage, then never repeated.
 const GEMINI_LINES = [
-  "Analyzing with Gemini…",
+  "Magpie is taking a look…",
   "Judging your first impression…",
   "Weighing your color choices…",
   "Checking if your CTAs actually convert…",
   "Sizing up the competition…",
   "Reading between the pixels…",
   "Grading your copywriting…",
-  "Deciding how brutal to be…",
+  "Deciding how blunt to be…",
   "Counting your broken links…",
   "Squinting at your font choices…",
   "Timing how long your hero section takes to make sense…",
@@ -27,7 +22,7 @@ const GEMINI_LINES = [
   "Testing your buttons for main character energy…",
   "Measuring the awkward silence in your whitespace…",
   "Fact-checking your trust badges…",
-  "Wondering who approved that shade of orange…",
+  "Wondering who approved that shade of blue…",
   "Scanning your headlines for actual meaning…",
   "Counting how many clicks to checkout…",
   "Sniffing out corporate jargon…",
@@ -44,7 +39,7 @@ const GEMINI_LINES = [
   "Judging your form fields for excessive ambition…",
   "Looking for the 'buy now' button you buried…",
   "Weighing the vibes versus the substance…",
-  "Checking your HTTPS like it's 2025…",
+  "Making sure your padlock actually locks…",
   "Timing your load speed with a stopwatch…",
   "Deciding if that pop-up was really necessary…",
   "Scoring your SEO homework…",
@@ -95,18 +90,20 @@ export default function ProgressIndicator({ stage }: { stage: ProgressStage | nu
   if (!stage) return null;
 
   const label = isGemini ? GEMINI_LINES[lineIndex] : stage.label;
-  const icon = ICONS[stage.id];
 
   return (
-    <div className="mt-4 flex items-center justify-center">
-      <span
-        key={isGemini ? undefined : `${stage.id}:${stage.label}`}
-        className={`flex items-center gap-2 font-mono text-[13px] tracking-wide ${
-          isGemini ? "gemini-shimmer" : "stage-fade text-[var(--stage-text)]"
-        }`}
-      >
-        {icon && <span>{icon}</span>}
-        <span>{label}</span>
+    <div className="mt-6 flex items-center justify-center" role="status" aria-live="polite">
+      <span className="inline-flex items-center gap-3 rounded-full border border-line bg-surface px-4 py-2 shadow-sm">
+        <span
+          aria-hidden="true"
+          className="spin-ring h-4 w-4 shrink-0 rounded-full border-2 border-line-strong border-t-accent"
+        />
+        <span
+          key={isGemini ? undefined : `${stage.id}:${stage.label}`}
+          className={`font-mono text-[13px] tracking-wide ${isGemini ? "gemini-shimmer" : "stage-fade text-ink-soft"}`}
+        >
+          {label}
+        </span>
       </span>
     </div>
   );

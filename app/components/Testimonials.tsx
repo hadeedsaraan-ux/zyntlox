@@ -31,27 +31,28 @@ const testimonials = [
 
 export default function Testimonials() {
   return (
-    <section className="w-full max-w-2xl mt-12">
-      <div className="text-center mb-6">
-        <span className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase">
-          Early Feedback
-        </span>
-        <h2 className="font-display text-2xl font-bold mt-2">What People Are Saying</h2>
+    <section className="w-full max-w-5xl pt-24" aria-labelledby="testimonials-heading">
+      <div className="mb-10 flex flex-col items-center text-center">
+        <p className="eyebrow mb-3">Early feedback</p>
+        <h2 id="testimonials-heading" className="font-display text-4xl sm:text-5xl">
+          What early users say
+        </h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
         {testimonials.map((t) => (
-          <div
-            key={t.name}
-            className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4"
-          >
-            <p className="text-[var(--text)] opacity-90 text-sm leading-relaxed mb-3">
-              &ldquo;{t.quote}&rdquo;
-            </p>
-            <p className="font-mono text-[11px] tracking-wide text-[var(--amber)]">
-              {t.name}
-              {t.title && <span className="text-[var(--muted)]"> · {t.title}</span>}
-            </p>
-          </div>
+          <figure key={t.name} className="card mb-4 break-inside-avoid p-6">
+            <span aria-hidden="true" className="sheen-text block font-display text-5xl leading-none">
+              &ldquo;
+            </span>
+            <blockquote className="-mt-2 font-display text-xl leading-snug text-ink">{t.quote}</blockquote>
+            <figcaption className="mt-5 flex items-start gap-2.5 text-sm">
+              <span className="ring-marker mt-[5px] text-accent" aria-hidden="true" />
+              <span>
+                <span className="block font-medium text-ink">{t.name}</span>
+                {t.title && <span className="block text-muted">{t.title}</span>}
+              </span>
+            </figcaption>
+          </figure>
         ))}
       </div>
     </section>

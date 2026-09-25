@@ -13,22 +13,18 @@ export default function ModeToggle({
   ];
 
   return (
-    <div className="inline-flex p-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg">
+    <div role="group" aria-label="Report wording" className="inline-flex rounded-lg border border-line bg-surface p-0.5">
       {options.map((opt) => {
         const active = mode === opt.value;
         return (
           <button
             key={opt.value}
+            type="button"
+            aria-pressed={active}
             onClick={() => onChange(opt.value)}
-            className="px-4 py-1.5 rounded-md font-mono text-xs tracking-wide uppercase transition"
-            style={
-              active
-                ? {
-                    background: "linear-gradient(135deg, var(--ember), var(--amber))",
-                    color: "#1a1614",
-                  }
-                : { color: "var(--muted)" }
-            }
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+              active ? "bg-ink text-on-ink" : "text-muted hover:text-ink"
+            }`}
           >
             {opt.label}
           </button>

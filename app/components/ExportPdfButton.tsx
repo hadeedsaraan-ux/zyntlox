@@ -78,46 +78,46 @@ export default function ExportPdfButton({
   return (
     <div className="relative">
       <button
+        type="button"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="px-4 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] font-mono text-xs tracking-wide uppercase text-[var(--muted)] transition hover:text-[var(--text)] hover:border-[var(--amber)]"
+        className={`btn-ghost px-3 py-1.5 text-xs ${error ? "border-danger/50 text-danger" : ""}`}
       >
-        {error ? "Export Failed — Retry" : "Export PDF"}
+        {error ? "Export failed — retry" : "Export PDF"}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-20 w-72 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-lg">
-          <p className="font-mono text-[10px] tracking-widest text-[var(--muted)] uppercase mb-3">
-            Brand This PDF (optional)
-          </p>
+        <div className="card absolute right-0 top-[calc(100%+8px)] z-30 w-[min(20rem,calc(100vw-2rem))] p-4">
+          <p className="eyebrow mb-3">Brand this PDF · optional</p>
 
-          <label className="block font-mono text-[10px] text-[var(--muted)] uppercase mb-1">
-            Agency Name
+          <label htmlFor="agency-name" className="mb-1 block text-xs font-medium text-ink-soft">
+            Agency name
           </label>
           <input
+            id="agency-name"
             type="text"
             value={agencyName}
             onChange={(e) => setAgencyName(e.target.value)}
             placeholder="Defaults to Magpie"
-            className="w-full mb-3 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--amber)] transition font-mono text-xs"
+            className="field mb-3 px-3 py-2 text-sm"
           />
 
-          <label className="block font-mono text-[10px] text-[var(--muted)] uppercase mb-1">
-            Agency Logo
-          </label>
+          <label className="mb-1 block text-xs font-medium text-ink-soft">Agency logo</label>
           {agencyLogoDataUri ? (
-            <div className="flex items-center gap-2 mb-3">
+            <div className="mb-3 flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={agencyLogoDataUri}
                 alt="Agency logo preview"
-                className="h-10 max-w-[120px] object-contain rounded bg-[var(--bg)] border border-[var(--border)] p-1"
+                className="h-10 max-w-[120px] rounded border border-line bg-surface-2 object-contain p-1"
               />
               <button
+                type="button"
                 onClick={() => {
                   setAgencyLogoDataUri(null);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
-                className="font-mono text-[10px] text-[var(--muted)] uppercase underline hover:text-[var(--text)]"
+                className="text-xs text-muted underline hover:text-ink"
               >
                 Remove
               </button>
@@ -128,25 +128,19 @@ export default function ExportPdfButton({
               type="file"
               accept="image/*"
               onChange={handleLogoChange}
-              className="w-full mb-3 font-mono text-[10px] text-[var(--muted)]"
+              className="mb-3 w-full text-xs text-muted file:mr-3 file:rounded-md file:border file:border-line-strong file:bg-surface-2 file:px-2.5 file:py-1 file:text-xs file:text-ink"
             />
           )}
 
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => setOpen(false)}
-              className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg)] border border-[var(--border)] font-mono text-[11px] tracking-wide uppercase text-[var(--muted)] transition hover:text-[var(--text)]"
-            >
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => setOpen(false)} className="btn-ghost flex-1 px-3 py-2 text-sm">
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleExport}
               disabled={exporting}
-              className="flex-1 px-3 py-2 rounded-lg font-mono text-[11px] tracking-wide uppercase transition disabled:opacity-50"
-              style={{
-                background: "linear-gradient(135deg, var(--ember), var(--amber))",
-                color: "#1a1614",
-              }}
+              className="btn-primary flex-1 px-3 py-2 text-sm"
             >
               {exporting ? "Exporting…" : "Download PDF"}
             </button>

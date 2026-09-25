@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import CompetitorComparison from "../components/CompetitorComparison";
 import ModeToggle from "../components/ModeToggle";
 import ProgressIndicator from "../components/ProgressIndicator";
@@ -18,7 +17,7 @@ export default function ComparePageClient() {
 
   const handleCompare = async () => {
     if (!yourUrl || !competitorUrl) {
-      alert("Please enter both website URLs first!");
+      setError("Enter both website addresses to compare them.");
       return;
     }
 
@@ -83,86 +82,86 @@ export default function ComparePageClient() {
   };
 
   return (
-    <main className="min-h-screen px-4 py-16 flex flex-col items-center">
-      <div className="w-full max-w-xl mb-6">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase hover:text-[var(--amber)] transition"
-        >
-          ← Back to MAGPIE
-        </Link>
-      </div>
-
-      {/* Hero */}
-      <div className="w-full max-w-xl text-center mb-10">
-        <div className="inline-block px-3 py-1 mb-4 border border-[var(--border)] rounded-full">
-          <span className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase">
-            Competitor Analysis
-          </span>
-        </div>
-        <h1 className="font-display text-4xl md:text-5xl font-bold mb-3 tracking-tight">
-          Compare Head-to-Head
+    <main className="flex flex-col items-center px-4 sm:px-6">
+      <section className="relative w-full max-w-3xl pt-16 pb-10 text-center sm:pt-20">
+        <p className="eyebrow mb-5">Head-to-head</p>
+        <h1 className="font-display text-[2.6rem] leading-[1.04] sm:text-6xl">
+          You versus the <em className="sheen-text pr-1">competition.</em>
         </h1>
-        <p className="text-[var(--muted)] max-w-md mx-auto leading-relaxed">
-          See exactly how your website stacks up against a competitor&apos;s — design, trust, UX, and SEO, side by side.
+        <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted">
+          Magpie inspects both sites against the same checklist, then explains exactly where
+          each one is ahead — design, trust, UX and SEO — and what to fix first.
         </p>
-      </div>
 
-      {/* Input Card */}
-      <div className="w-full max-w-xl bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 scorched-top">
-        <div className="mb-4">
-          <label className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase mb-2 block">
-            Your URL
-          </label>
-          <input
-            type="text"
-            placeholder="https://yoursite.com"
-            value={yourUrl}
-            onChange={(e) => setYourUrl(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--ember)] transition font-mono text-sm"
-          />
-        </div>
-        <div className="mb-4">
-          <label className="font-mono text-[11px] tracking-widest text-[var(--muted)] uppercase mb-2 block">
-            Competitor&apos;s URL
-          </label>
-          <input
-            type="text"
-            placeholder="https://competitor.com"
-            value={competitorUrl}
-            onChange={(e) => setCompetitorUrl(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--ember)] transition font-mono text-sm"
-          />
-        </div>
-        <button
-          onClick={handleCompare}
-          disabled={loading}
-          className="w-full px-6 py-3 rounded-lg font-display font-bold transition disabled:opacity-50 whitespace-nowrap"
-          style={{
-            background: "linear-gradient(135deg, var(--ember), var(--amber))",
-            color: "#1a1614",
+        <form
+          className="relative mx-auto mt-10 max-w-xl text-left"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCompare();
           }}
         >
-          {loading ? "Comparing..." : "⚔️ Compare It"}
-        </button>
-      </div>
+          <div aria-hidden="true" className="hero-glow pointer-events-none absolute -inset-10 -z-10" />
+          <div className="card space-y-4 p-5 sm:p-6">
+            <div>
+              <label htmlFor="your-url" className="mb-1.5 block text-sm font-medium text-ink-soft">
+                Your site
+              </label>
+              <input
+                id="your-url"
+                type="text"
+                inputMode="url"
+                placeholder="yoursite.com"
+                value={yourUrl}
+                onChange={(e) => setYourUrl(e.target.value)}
+                className="field px-4 py-3 font-mono text-[15px]"
+              />
+            </div>
+            <div>
+              <label htmlFor="competitor-url" className="mb-1.5 block text-sm font-medium text-ink-soft">
+                Competitor&apos;s site
+              </label>
+              <input
+                id="competitor-url"
+                type="text"
+                inputMode="url"
+                placeholder="competitor.com"
+                value={competitorUrl}
+                onChange={(e) => setCompetitorUrl(e.target.value)}
+                className="field px-4 py-3 font-mono text-[15px]"
+              />
+            </div>
+            <button type="submit" disabled={loading} className="btn-primary w-full px-6 py-3 text-[15px]">
+              {loading ? "Comparing…" : "Compare sites"}
+            </button>
+          </div>
+          <p className="mt-4 text-center font-mono text-[11px] tracking-wide text-muted">
+            Takes about a minute · Nothing stored
+          </p>
+        </form>
 
-      {loading && <ProgressIndicator stage={activeStage} />}
+        {loading && <ProgressIndicator stage={activeStage} />}
 
-      {error && (
-        <div className="mt-6 w-full max-w-xl bg-[#2a1616] border border-[var(--danger)] text-[#ffb4b4] px-4 py-3 rounded-lg font-mono text-sm">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div
+            role="alert"
+            className="mx-auto mt-6 max-w-xl rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-left text-sm text-danger"
+          >
+            {error}
+          </div>
+        )}
+      </section>
 
       {comparison && (
-        <div className="mt-8 w-full max-w-4xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <h2 className="font-display text-2xl font-bold">Comparison Report</h2>
+        <section className="w-full max-w-5xl">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+            <div>
+              <p className="eyebrow">The comparison</p>
+              <h2 className="font-display text-3xl">Head-to-head verdict</h2>
+            </div>
             <ModeToggle mode={mode} onChange={setMode} />
           </div>
           <CompetitorComparison comparison={comparison} mode={mode} />
-        </div>
+        </section>
       )}
     </main>
   );

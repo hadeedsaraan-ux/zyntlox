@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import ComparePageClient from "./ComparePageClient";
 
 export const metadata: Metadata = {
-  title: "Competitor Comparison — MAGPIE",
+  title: "Compare sites — Magpie",
   description: "Compare your website head-to-head against a competitor's — design, trust, UX, and SEO, side by side.",
 };
 

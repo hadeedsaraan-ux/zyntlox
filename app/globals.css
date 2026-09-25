@@ -1,46 +1,255 @@
 @import "tailwindcss";
 
+/*
+ * Magpie design tokens. Light is the default; dark follows the OS setting.
+ * The one accent is the "sheen" — the iridescent teal → blue → violet on a magpie's
+ * wing — used sparingly: primary actions, focus, the logo ring, section markers.
+ */
 :root {
-  --bg: #1a1614;
-  --bg-card: #211c19;
-  --bg-card-hover: #292220;
-  --ember: #ff6b35;
-  --amber: #ffa940;
-  --text: #f5efe6;
-  --muted: #9c8f82;
-  --border: #342c26;
-  --danger: #e5484d;
-  --success: #7cb87f;
-  --stage-text: #ffb35c;
+  --paper: #f6f4ef;
+  --surface: #ffffff;
+  --surface-2: #f1eee7;
+  --ink: #111318;
+  --ink-soft: #2a2e37;
+  --muted: #5d6470;
+  --line: #e4e1d9;
+  --line-strong: #cfcbc0;
+
+  --sheen-1: #1f7a8c;
+  --sheen-2: #3b4fd0;
+  --sheen-3: #7a4bc2;
+  --accent: #3b4fd0;
+
+  --danger: #c2362f;
+  --danger-soft: #fbeceb;
+  --success: #1f7a4d;
+  --success-soft: #e7f3ec;
+  --warn: #a8690f;
+  --warn-soft: #fbf1df;
+
+  --on-ink: #ffffff;
+  --grid-dot: rgba(17, 19, 24, 0.07);
+  --glow-a: rgba(59, 79, 208, 0.16);
+  --glow-b: rgba(31, 122, 140, 0.14);
+  --shadow-card: 0 1px 0 rgba(17, 19, 24, 0.04), 0 8px 24px -12px rgba(17, 19, 24, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e0f12;
+    --surface: #16181d;
+    --surface-2: #1c1f25;
+    --ink: #f2f1ec;
+    --ink-soft: #d9d8d2;
+    --muted: #9aa0ab;
+    --line: #262a31;
+    --line-strong: #353a43;
+
+    --sheen-1: #3fb3c4;
+    --sheen-2: #7b8cff;
+    --sheen-3: #b690f0;
+    --accent: #8b9bff;
+
+    --danger: #f0736b;
+    --danger-soft: #2a1716;
+    --success: #5cc48e;
+    --success-soft: #13241b;
+    --warn: #e8b25a;
+    --warn-soft: #2a2213;
+
+    --on-ink: #0e0f12;
+    --grid-dot: rgba(255, 255, 255, 0.06);
+    --glow-a: rgba(123, 140, 255, 0.18);
+    --glow-b: rgba(63, 179, 196, 0.12);
+    --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.3), 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-sheen-1: var(--sheen-1);
+  --color-sheen-2: var(--sheen-2);
+  --color-sheen-3: var(--sheen-3);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-on-ink: var(--on-ink);
+
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-display), ui-serif, Georgia, serif;
+  --font-mono: var(--font-code), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-body), sans-serif;
+  background-color: var(--paper);
+  /* A faint dotted grid — graph paper for a close inspection. */
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
-.font-display {
-  font-family: var(--font-display), sans-serif;
+::selection {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-.scorched-top {
-  position: relative;
-}
+@layer components {
+  .font-display {
+    font-family: var(--font-display), ui-serif, Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
 
-.scorched-top::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, transparent, var(--ember), var(--amber), var(--ember), transparent);
-  opacity: 0.8;
-}
+  .sheen-text {
+    background-image: linear-gradient(100deg, var(--sheen-1), var(--sheen-2) 50%, var(--sheen-3));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: var(--accent);
+  }
 
-.dotted-divider {
-  border-top: 1px dashed var(--border);
+  .sheen-bg {
+    background-image: linear-gradient(100deg, var(--sheen-1), var(--sheen-2) 50%, var(--sheen-3));
+  }
+
+  .eyebrow {
+    font-family: var(--font-code), ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  .field {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 0.75rem;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .field::placeholder {
+    color: var(--muted);
+    opacity: 0.8;
+  }
+  .field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  /* Ink button whose sheen surfaces on hover, like light catching a wing. */
+  .btn-primary {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--ink);
+    color: var(--on-ink);
+    border-radius: 0.75rem;
+    font-weight: 600;
+    transition: transform 150ms, opacity 150ms;
+  }
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image: linear-gradient(100deg, var(--sheen-1), var(--sheen-2) 50%, var(--sheen-3));
+    opacity: 0;
+    transition: opacity 250ms;
+  }
+  .btn-primary:hover:not(:disabled)::before {
+    opacity: 1;
+  }
+  .btn-primary:hover:not(:disabled) {
+    color: #ffffff;
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn-primary:disabled {
+    opacity: 0.55;
+    cursor: progress;
+  }
+
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-soft);
+    border-radius: 0.65rem;
+    font-weight: 500;
+    transition: border-color 150ms, color 150ms, background 150ms;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+  .btn-ghost:disabled {
+    opacity: 0.5;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    font-family: var(--font-code), ui-monospace, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* The logo's ring, reused as the marker for findings. */
+  .ring-marker {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    flex-shrink: 0;
+  }
+
+  .hero-glow {
+    background:
+      radial-gradient(40% 60% at 30% 50%, var(--glow-a), transparent 70%),
+      radial-gradient(40% 60% at 70% 50%, var(--glow-b), transparent 70%);
+    filter: blur(20px);
+  }
 }
 
 @keyframes stage-fade {
@@ -74,16 +283,32 @@ body {
 }
 
 .gemini-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    var(--stage-text) 35%,
-    #fff1d8 50%,
-    var(--stage-text) 65%
-  );
+  background-image: linear-gradient(90deg, var(--ink-soft) 35%, var(--accent) 50%, var(--ink-soft) 65%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  color: var(--stage-text);
+  color: var(--ink-soft);
   animation: text-shimmer 2.2s linear infinite;
+}
+
+@keyframes spin-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-ring {
+  animation: spin-ring 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .gemini-shimmer,
+  .spin-ring,
+  .stage-fade {
+    animation: none;
+  }
 }

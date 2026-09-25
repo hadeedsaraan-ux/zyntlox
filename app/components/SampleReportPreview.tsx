@@ -10,23 +10,23 @@ export default function SampleReportPreview() {
   const [mode, setMode] = useState<ReportMode>("technical");
 
   return (
-    <section className="w-full max-w-2xl mt-12" data-scrape-ignore="true">
-      <div className="text-center mb-6">
-        <span className="font-mono text-[11px] tracking-widest text-[var(--amber)] uppercase">
-          ▸ Example Output ◂
-        </span>
-        <h2 className="font-display text-2xl font-bold mt-2 mb-2">
-          See a Sample Report
+    <section
+      id="sample"
+      className="w-full max-w-3xl pt-24"
+      aria-labelledby="sample-heading"
+      data-scrape-ignore="true"
+    >
+      <div className="mb-8 flex flex-col items-center text-center">
+        <p className="eyebrow mb-3">Example output</p>
+        <h2 id="sample-heading" className="font-display text-4xl sm:text-5xl">
+          A sample verdict
         </h2>
-        <p className="text-[var(--muted)] max-w-md mx-auto leading-relaxed">
-          Here's what a real roast looks like — this one's for{" "}
-          <span className="font-mono">{sampleUrl}</span>.
+        <p className="mt-4 max-w-md leading-relaxed text-muted">
+          This is what Magpie hands back — here for an example bakery,{" "}
+          <span className="font-mono text-sm text-ink-soft">{sampleUrl}</span>.
         </p>
       </div>
-      <div className="flex justify-center mb-4">
-        <ModeToggle mode={mode} onChange={setMode} />
-      </div>
-      <RoastReport report={sampleReport} mode={mode} sample />
+      <RoastReport report={sampleReport} mode={mode} sample toolbar={<ModeToggle mode={mode} onChange={setMode} />} />
     </section>
   );
 }
